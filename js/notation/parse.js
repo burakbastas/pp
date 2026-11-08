@@ -69,11 +69,11 @@ function splitText(src) {
 
 function parseStaff(barText, defaultClef, state) {
   const ctx = { dur: state.dur || '4' };  // süre bir önceki ölçüden sürer
-  const [a, b] = barText.split('//');
-  const v1 = parseVoice(a, ctx);
+  const parts = barText.split('//');
+  const v1 = parseVoice(parts[0], ctx);
   state.dur = ctx.dur;
   const voices = [v1];
-  if (b !== undefined) { const c2 = { dur: state.dur2 || '4' }; voices.push(parseVoice(b, c2)); state.dur2 = c2.dur; }
+  parts.slice(1).forEach((p, k) => { const key = 'dur' + (k + 2), c2 = { dur: state[key] || '4' }; voices.push(parseVoice(p, c2)); state[key] = c2.dur; });
   if (ctx.clef) state.clef = ctx.clef;
   return { voices, clef: state.clef, repeatStart: ctx.repeatStart, repeatEnd: ctx.repeatEnd };
 }

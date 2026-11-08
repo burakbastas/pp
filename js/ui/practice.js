@@ -1,94 +1,96 @@
-// Çalışma ekranı: nota + klavye + kontroller
+// Çalışma ekranı: porte, ekran klavyesi, MIDI takibi ve sonuç
 import { parseScore } from '../notation/parse.js';
 import { Engraved } from '../notation/render.js';
-import { Keyboard } from './keyboard.js';
 import { Player } from './player.js';
+import { Keyboard } from './keyboard.js';
 import { ensureAudio, playNote, setVolume, preloadPiano, pianoState } from '../audio/piano.js';
 import { Inputs, connectMIDI, enableComputerKeys } from '../audio/input.js';
-import { db, save, logMinutes } from '../store.js';
-import { toast, esc } from './dom.js';
+import { db, save, record, score as bestOf, required, PASS, setManual, isDone } from '../store.js';
+import { esc, toast } from './dom.js';
 
-const I = {
-  back: '<svg viewBox="0 0 20 20"><path d="M12.5 3.5 6 10l6.5 6.5"/></svg>',
-  play: '<svg viewBox="0 0 24 24"><path class="fill" d="M7 4.5v15l13-7.5z"/></svg>',
-  stop: '<svg viewBox="0 0 24 24"><rect class="fill" x="6" y="6" width="12" height="12" rx="1.5"/></svg>',
-  gear: '<svg viewBox="0 0 22 22"><path d="M3 6h9m5 0h2M3 16h2m5 0h9"/><circle cx="14.5" cy="6" r="2.4"/><circle cx="7.5" cy="16" r="2.4"/></svg>',
+const ICON = {
+  back: '<svg viewBox="0 0 20 20"><path d="M12.500 4 6.500 10l6 6"/></svg>',
+  gear: '<svg viewBox="0 0 22 22"><path d="M3 6h9m5 0h2M3 16h2m5 0h9"/><circle cx="14.500" cy="6" r="2.400"/><circle cx="7.500" cy="16" r="2.400"/></svg>',
+  play: '<svg viewBox="0 0 24 24"><path class="f" d="M8 5.500v13l11-6.500Z"/></svg>',
+  stop: '<svg viewBox="0 0 24 24"><rect class="f" x="7" y="7" width="10" height="10"/></svg>',
+  again: '<svg viewBox="0 0 24 24"><path d="M19 12a7 7 0 1 1-2.100-5M19 3.500V8h-4.500"/></svg>',
 };
-const HINTS = { always: 'Tuşlar açık', error: 'Hata olunca', off: 'Tuşlar kapalı' };
-const HNEXT = { always: 'error', error: 'off', off: 'always' };
+const HAND = { lh: 'Sol el', rh: 'Sağ el', both: 'İki el' };
 
-export function mountPractice(root, cfg, { onExit }) {
-  const lessonId = cfg.lessonId;
-  const def = cfg.def;
-  const score = parseScore(def);
-  if (cfg.firstBar) score.measures.forEach(m => { m.display = m.i + cfg.firstBar; });
-  root.innerHTML = `
-  <section class="practice">
-    <header class="p-head">
-      <button class="icon-btn" data-a="back" aria-label="Geri">${I.back}</button>
-      <div class="p-title"><h1>${esc(cfg.title || def.title || 'Çalışma')}</h1>${cfg.sub ? `<p>${esc(cfg.sub)}</p>` : ''}</div>
-      ${cfg.how?.length ? '<button class="txt-btn" data-a="how">İpuçları</button>' : ''}
-      <button class="icon-btn" data-a="set" aria-label="Ayarlar">${I.gear}</button>
+// Bir bölümü nota verisinden kesip çıkarır; önceki anahtar değişimleri korunur
+export function sectionDef(n, [a, b], title) {
+  const clefAt = (arr, start) => { let c = start; for (let i = 0; i < a; i++) { if (/%b/.test(arr[i])) c = 'bass'; if (/%t/.test(arr[i])) c = 'treble'; } return c; };
+  const clean = (x) => x.replace(/\|:\s*/g, '').replace(/\s*:\|/g, '');
+  const rh = (n.rh || []).slice(a, b).map(clean), lh = (n.lh || []).slice(a, b).map(clean);
+  return { title, key: n.key, time: n.time, tempo: n.tempo, rh, lh, clefR: clefAt(n.rh || [], n.clefR || 'treble'), clefL: clefAt(n.lh || [], n.clefL || 'bass'), pickup: a === 0 ? n.pickup : 0, firstBar: a };
+}
+
+export function mountPractice(root, { item, notes, sec, backHref, nextItemHref, sub }) {
+  const def = sectionDef(notes, item.sections[sec], item.title);
+  const s = parseScore(def);
+  const S = db.settings;
+  const both = s.staves.rh && s.staves.lh;
+  const need = required(item);
+  const firstHand = () => {
+    if (!both) return s.staves.lh ? 'lh' : 'rh';
+    if (item.kind === 'finger') return item.hand;
+    for (const h of ['lh', 'rh', 'both']) if ((bestOf(item.id, sec, h) ?? 0) < PASS) return h;
+    return 'both';
+  };
+  const howList = item.how?.length ? `<ol>${item.how.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '';
+  const showHowFirst = item.kind === 'finger' && !db.howSeen[item.id];
+  if (showHowFirst) { db.howSeen[item.id] = true; save(); }
+  const hasHow = !!(howList || item.why || item.note);
+  root.innerHTML = `<section class="pr">
+    <header class="pr-h">
+      <a class="ic" href="${backHref}" aria-label="Geri">${ICON.back}</a>
+      <div class="pr-t"><h1>${esc(item.title)}</h1><p>${esc(sub)}</p></div>
+      ${hasHow ? `<button class="tx" data-a="how" aria-expanded="${showHowFirst}">Nasıl çalışılır</button>` : ''}
+      <button class="ic" data-a="set" aria-label="Ayarlar">${ICON.gear}</button>
     </header>
-    ${cfg.how?.length ? `<div class="p-how" hidden><ol>${cfg.how.map(h => `<li>${esc(h)}</li>`).join('')}</ol>${cfg.src ? `<p class="src">${esc(cfg.src)}</p>` : ''}</div>` : ''}
-    ${cfg.goal ? `<p class="p-goal">${esc(cfg.goal)}</p>` : ''}
-    ${cfg.note ? `<p class="p-note">${esc(cfg.note)}</p>` : ''}
-    <div class="score-view" tabindex="0" aria-label="Nota"><div class="score-host"></div></div>
-    <div class="p-status" role="status"></div>
-    <div class="p-dock">
-      <div class="dock-main">
-        <button class="play-btn" data-a="play" aria-label="Başlat">${I.play}</button>
-        <div class="tempo" aria-label="Tempo">
-          <button data-a="t-" aria-label="Yavaşlat">−</button>
-          <label><output class="tval"></output><small>vuruş/dk</small></label>
-          <button data-a="t+" aria-label="Hızlandır">+</button>
-        </div>
-        <button class="clean-btn" data-a="clean"><span class="pips"></span><span class="cl">Temiz çaldım</span></button>
-      </div>
-      <div class="dock-row">
-        <div class="seg" role="group" aria-label="Kip">
-          <button data-mode="listen">Dinle</button><button data-mode="with">Birlikte</button><button data-mode="wait">Bekle</button><button data-mode="follow">Takip</button>
-        </div>
-        <div class="seg hands" role="group" aria-label="El" ${score.staves.rh && score.staves.lh ? '' : 'hidden'}>
-          <button data-hand="lh" class="lh-tag">Sol</button><button data-hand="both">İki el</button><button data-hand="rh" class="rh-tag">Sağ</button>
-        </div>
-      </div>
-      <div class="dock-row minor">
-        ${cfg.onDone ? `<button class="chip done" data-a="finish">${esc(cfg.doneLabel || 'Adımı bitir')}</button>` : ''}
-        ${cfg.onHard ? `<button class="chip" data-a="hard">${esc(cfg.hardLabel || 'Zorlandım')}</button>` : ''}
-        ${Inputs.midi.supported ? '<button class="chip midi" data-a="midi"></button>' : ''}
-        <button class="chip" data-a="loop">Döngü</button>
-        <button class="chip" data-a="hint"></button>
-        ${cfg.showBreak ? '<button class="chip" data-a="break">Ezberi kır</button>' : ''}
-      </div>
+    <div class="pr-how" ${showHowFirst ? '' : 'hidden'}>
+      ${item.why ? `<p>${esc(item.why)}</p>` : ''}${howList}${item.note ? `<p class="m">${esc(item.note)}</p>` : ''}
+    </div>
+    ${item.sections.length > 1 ? `<nav class="secs" aria-label="Bölümler">${item.sections.map(([a, b], i) => {
+    const r = (bestOf(item.id, i, need) ?? 0) >= PASS;
+    return `<a href="#/c/${item.id}/${i}" class="${i === sec ? 'on' : ''} ${r ? 'd' : ''}" aria-label="Ölçü ${a + 1} ile ${b} arası">${a + 1}–${b}</a>`;
+  }).join('')}</nav>` : ''}
+    <div class="pr-score"><div class="score-host"></div></div>
+    <p class="pr-status" role="status"></p>
+    <div class="pr-dock">
+      <div class="seg" role="group" aria-label="Çalışma biçimi"><button data-mode="follow">Çal</button><button data-mode="listen">Dinle</button></div>
+      ${both ? '<div class="seg hands" role="group" aria-label="El"><button data-hand="lh">Sol</button><button data-hand="both">İki</button><button data-hand="rh">Sağ</button></div>' : ''}
+      <button class="go" data-a="play" aria-label="Başlat">${ICON.play}</button>
+      <div class="tempo" aria-label="Tempo"><button data-a="t-" aria-label="Yavaşlat">−</button><output class="tval"></output><button data-a="t+" aria-label="Hızlandır">+</button></div>
+      <button class="tg" data-a="loop"></button>
+      <button class="tg" data-a="hint"></button>
+      ${Inputs.midi.supported ? '<button class="tg" data-a="midi"></button>' : ''}
     </div>
     <div class="kb-host"></div>
     <div class="sheet" hidden></div>
   </section>`;
-  const $ = (s) => root.querySelector(s);
-  const S = db.settings;
-  const scoreHost = $('.score-host'), view = $('.score-view'), status = $('.p-status');
+  const $ = (q) => root.querySelector(q);
+  const host = $('.score-host'), view = $('.pr-score'), status = $('.pr-status');
   let eng, pl;
   const engrave = () => {
     const w = view.clientWidth - 8;
-    const base = w < 480 ? 6.6 : w < 900 ? 8 : w < 1200 ? 9.5 : 11;
-    eng = new Engraved(score, scoreHost, { width: w, sp: base * S.zoom, showFingers: S.fingers, showNames: S.names });
+    const base = w < 480 ? 6.8 : w < 900 ? 8.2 : w < 1200 ? 9.5 : 11;
+    eng = new Engraved(s, host, { width: w, sp: base * S.zoom, showFingers: S.fingers, showNames: S.names });
     if (pl) pl.setEngraved(eng);
   };
   engrave();
-  const allMidis = score.measures.flatMap(m => ['rh', 'lh'].flatMap(h => m[h] ? m[h].voices.flat().flatMap(e => e.notes.map(n => n.midi)) : []));
-  const low = Math.min(36, ...allMidis), high = Math.max(84, ...allMidis);
+  const all = s.measures.flatMap(m => ['rh', 'lh'].flatMap(h => m[h] ? m[h].voices.flat().flatMap(e => e.notes.map(n => n.midi)) : []));
+  const low = Math.min(36, ...all), high = Math.max(84, ...all);
   const voices = new Map();
   const kb = new Keyboard($('.kb-host'), {
     low: low - (low % 12), high: high + (12 - (high % 12)) % 12,
     onDown: (m) => { ensureAudio(); voices.set(m, playNote(m, 0, null, 0.72)); Inputs.emit('down', m, 'touch'); },
     onUp: (m) => { voices.get(m)?.release?.(); voices.delete(m); Inputs.emit('up', m, 'touch'); },
   });
-  pl = new Player({ score, engraved: eng, keyboard: kb, onState });
-  pl.hands = cfg.hands || 'both';
-  const stored = lessonId && db.tempo[lessonId];
-  pl.tempo = stored || cfg.tempo || def.tempo || 72;
-  pl.metro = S.metro; pl.countIn = S.countIn; pl.hint = cfg.noHint ? 'off' : S.hint;
+  pl = new Player({ score: s, engraved: eng, keyboard: kb, onState });
+  pl.hands = firstHand();
+  pl.tempo = db.tempo[item.id] || Math.max(40, Math.round(item.tempo * 0.6));
+  pl.metro = S.metro; pl.countIn = true; pl.hint = S.hint;
   pl.buildSteps();
   enableComputerKeys(true);
   let pedal = false; const held = new Set();
@@ -101,110 +103,123 @@ export function mountPractice(root, cfg, { onExit }) {
     else if (pedal) held.add(m);
     else { voices.get(m)?.release?.(); voices.delete(m); }
   });
-  const offMidi = (() => { const f = () => updateMidi(); addEventListener('midi-devices', f); return () => removeEventListener('midi-devices', f); })();
+  const onMidiDev = () => updateMidi();
+  addEventListener('midi-devices', onMidiDev);
   const showLoad = () => {
-    if (pl.state !== 'idle' || pianoState.ready) { if (pianoState.ready && status.dataset.load) { status.textContent = ''; delete status.dataset.load; } return; }
+    if (pl.state === 'playing') return;
+    if (pianoState.ready) { if (status.dataset.load) { status.textContent = ''; delete status.dataset.load; } return; }
     status.textContent = `Piyano sesi yükleniyor: ${pianoState.loaded} / ${pianoState.total}`; status.dataset.load = '1';
   };
   addEventListener('piano-progress', showLoad);
   if (!pianoState.ready) preloadPiano(Math.min(36, low), Math.max(84, high));
+
   let loopPick = false, loopA = null;
+  const disp = (i) => i + 1 + (def.firstBar || 0);
   function updateMidi() {
     const b = $('[data-a=midi]'); if (!b) return;
     const d = Inputs.midi.devices, on = Inputs.midi.ready && d.length > 0;
-    b.textContent = on ? 'MIDI: ' + d[0].replace(/\s+\d+$/, '') : Inputs.midi.busy.length ? 'MIDI başka programda' : Inputs.midi.ready ? 'MIDI aygıtı yok' : 'MIDI bağla';
+    b.textContent = on ? d[0].replace(/\s+\d+$/, '') : Inputs.midi.busy.length ? 'MIDI başka programda' : 'MIDI bağla';
     b.classList.toggle('on', on);
   }
-  const updateUI = () => {
-    scoreHost.classList.toggle('dim-lh', pl.hands === 'rh');
-    scoreHost.classList.toggle('dim-rh', pl.hands === 'lh');
-    root.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === pl.mode));
-    root.querySelectorAll('[data-hand]').forEach(b => b.classList.toggle('on', b.dataset.hand === pl.hands));
+  function updateUI() {
+    host.classList.toggle('dim-lh', pl.hands === 'rh');
+    host.classList.toggle('dim-rh', pl.hands === 'lh');
+    root.querySelectorAll('[data-mode]').forEach(b => { const on = b.dataset.mode === pl.mode; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+    root.querySelectorAll('[data-hand]').forEach(b => {
+      const on = b.dataset.hand === pl.hands, r = (bestOf(item.id, sec, b.dataset.hand) ?? 0) >= PASS;
+      b.classList.toggle('on', on); b.classList.toggle('d', r); b.setAttribute('aria-pressed', on);
+    });
     $('.tval').textContent = Math.round(pl.tempo);
-    $('[data-a=hint]').textContent = HINTS[pl.hint];
-    $('[data-a=loop]').classList.toggle('on', !!pl.loop || loopPick);
-    $('[data-a=loop]').textContent = loopPick ? (loopA == null ? 'İlk ölçüye dokun' : 'Son ölçüye dokun') : pl.loop ? `Döngü ${disp(pl.loop.a)}–${disp(pl.loop.b)}` : 'Döngü';
-    const c = (lessonId && db.clean[lessonId]) || cleanLocal;
-    $('.pips').innerHTML = [0, 1, 2].map(i => `<i class="${i < c ? 'f' : ''}"></i>`).join('');
-  };
-  let cleanLocal = 0;
-  const disp = (i) => i + 1 + (cfg.firstBar || 0);
-  const setPlayIcon = (on) => { const b = $('[data-a=play]'); b.innerHTML = on ? I.stop : I.play; b.setAttribute('aria-label', on ? 'Durdur' : 'Başlat'); };
-  function onState(st) {
-    if (st === 'playing' || st === 'waiting' || st === 'following') setPlayIcon(true);
-    if (st === 'following') status.textContent = 'Çalmaya başla, ben takip ediyorum.';
-    if (st === 'auto-follow') { updateUI(); toast('Takip kipi açıldı.'); }
-    if (st === 'follow-step' && pl.fw && pl.fw.started) {
-      const f = pl.fw, s = pl.steps[Math.min(pl.stepIdx, pl.steps.length - 1)];
-      status.textContent = `Ölçü ${disp(s.notes[0].mi)}${f.bpm ? ', tempo ' + f.bpm : ''}${f.wrong ? ', ' + f.wrong + ' yanlış' : ''}${f.missed ? ', ' + f.missed + ' atlanan' : ''}`;
-    }
-    if (st === 'follow-done') {
-      const r = pl.lastFollow;
-      status.innerHTML = `Doğru nota yüzde ${r.pct}${r.bpm ? ', tempo ' + r.bpm : ''}${r.wrong ? ', ' + r.wrong + ' yanlış' : ''}${r.missed ? ', ' + r.missed + ' atlanan' : ''}. ` + (r.weak.length ? `<button class="link" data-a="weak" data-b="${r.weak[0]}">Ölçü ${disp(r.weak[0])} üzerinde çalış</button>` : 'Yeniden çalarsan baştan izlerim.');
-      if (r.pct >= 95 && !r.wrong && !r.missed) addClean();
-      showResult({ pct: r.pct, tempoOK: r.bpm != null && r.bpm >= pl.tempo * 0.9, line: `Doğru nota yüzde ${r.pct}${r.bpm ? ', tempon ' + r.bpm : ''}${r.wrong ? ', ' + r.wrong + ' yanlış' : ''}${r.missed ? ', ' + r.missed + ' atlanan' : ''}.`, weak: r.weak.length ? r.weak[0] : null });
-    }
-    if (st === 'timing') { const r = pl.lastTiming; status.textContent = `Zamanında yüzde ${r.pct}. Ortalama ${Math.abs(r.avg)} ms ${r.avg > 0 ? 'geç' : 'erken'}${r.wrong ? ', ' + r.wrong + ' yanlış' : ''}${r.missed ? ', ' + r.missed + ' çalınmadı' : ''}.`; if (r.pct >= 95 && !r.wrong) addClean(); showResult({ pct: r.pct, tempoOK: pl.tempo >= (cfg.tempo || 0), line: `Zamanında yüzde ${r.pct}, ortalama ${Math.abs(r.avg)} ms ${r.avg > 0 ? 'geç' : 'erken'}.` }); }
-    if (st === 'stopped') { setPlayIcon(false); status.textContent = ''; }
-    if (st === 'tempo') updateUI();
-    if (st === 'progress' || st === 'waiting') {
-      const s = pl.stats; const done = pl.stepIdx;
-      status.textContent = `${done} / ${pl.steps.length} adım${s.wrong ? `, ${s.wrong} yanlış` : ''}`;
-    }
-    if (st === 'done') {
-      setPlayIcon(pl.state !== 'idle');
-      if (pl.mode === 'with') return;
-      if (pl.mode === 'wait' && pl.stats) {
-        const pct = pl.stats.total ? Math.round(100 * pl.stats.first / pl.stats.total) : 0;
-        status.textContent = `İlk denemede doğru: yüzde ${pct}`;
-        if (pct >= 95) { addClean(); }
-        showResult({ pct, tempoOK: false, line: `İlk denemede doğru: yüzde ${pct}.` });
-      } else status.textContent = '';
-    }
+    const hb = $('[data-a=hint]'); hb.textContent = pl.hint === 'off' ? 'Tuşlar kapalı' : 'Tuşlar açık'; hb.classList.toggle('on', pl.hint !== 'off');
+    const lb = $('[data-a=loop]'); lb.classList.toggle('on', !!pl.loop || loopPick);
+    lb.textContent = loopPick ? (loopA == null ? 'İlk ölçüye dokun' : 'Son ölçüye dokun') : pl.loop ? `Döngü ${disp(pl.loop.a)}–${disp(pl.loop.b)}` : 'Döngü';
+    setGo();
   }
-  const starsOf = (pct, tempoOK, hinted) => pct < 70 ? 0 : (pct >= 98 && tempoOK && !hinted) ? 3 : pct >= 90 ? 2 : 1;
-  function showResult({ pct, tempoOK, line, weak }) {
-    if (!cfg.onResult || pl.loop) return;
-    const hinted = pl.hint === 'always', stars = starsOf(pct, tempoOK, hinted);
-    cfg.onResult(stars);
-    document.querySelector('.toast')?.classList.remove('show');
+  function setGo() {
+    const b = $('[data-a=play]'), running = pl.state === 'playing';
+    if (pl.mode === 'follow') { b.innerHTML = ICON.again; b.setAttribute('aria-label', 'Baştan başla'); }
+    else { b.innerHTML = running ? ICON.stop : ICON.play; b.setAttribute('aria-label', running ? 'Durdur' : 'Dinle'); }
+  }
+  const setTempo = (d) => { pl.tempo = Math.max(24, Math.min(220, pl.tempo + d)); db.tempo[item.id] = pl.tempo; save(); updateUI(); if (pl.state === 'playing') { pl.stop(true); pl.play(); } };
+
+  function nextAction(hand) {
+    if (item.kind === 'piece' && both && hand !== 'both') {
+      const nx = hand === 'lh' ? 'rh' : 'both';
+      return { label: `${HAND[nx]} ile devam et`, run: () => { pl.stop(); pl.setHands(nx); updateUI(); } };
+    }
+    if (sec < item.sections.length - 1) return { label: 'Sonraki bölüm', run: () => { location.hash = `#/c/${item.id}/${sec + 1}`; } };
+    if (nextItemHref) return { label: 'Sonraki çalışma', run: () => { location.hash = nextItemHref; } };
+    return { label: 'Üniteye dön', run: () => { location.hash = backHref; } };
+  }
+  function showResult(r) {
+    const hand = pl.hands, pass = r.pct >= PASS;
+    record(item.id, sec, hand, r.pct);
+    updateUI();
+    if (pl.loop) return;
+    const nx = pass ? nextAction(hand) : null;
+    const parts = [`${r.wrong} yanlış`, `${r.missed} atlanan`].filter(x => !x.startsWith('0'));
     const sheet = $('.sheet'); sheet.hidden = false;
-    const cap = pct >= 98 && hinted ? 'Üç yıldız için tuş yardımını kapat.' : pct >= 98 && !tempoOK ? 'Üç yıldız için Takip ya da Birlikte kipinde adım temposunda çal.' : stars === 0 ? 'Tempoyu düşür, zor yeri döngüye al, sonra yeniden dene.' : '';
-    sheet.innerHTML = `<div class="sheet-card result" role="dialog" aria-label="Sonuç">
-      <div class="stars big">${'★'.repeat(stars)}<i>${'★'.repeat(3 - stars)}</i></div>
-      <h2>${stars ? (stars === 3 ? 'Kusursuz' : 'Adım tamam') : 'Bir tur daha'}</h2>
-      <p>${esc(line)}</p>${cap ? `<p class="muted">${esc(cap)}</p>` : ''}
-      ${stars && cfg.onNext ? `<button class="primary" data-r="next">${esc(cfg.nextLabel || 'Sonraki adım')}</button>` : ''}
-      <button class="chip wide" data-r="again">Tekrar çal</button>
-      ${weak != null ? `<button class="chip wide" data-r="weak">Ölçü ${disp(weak)} üzerinde çalış</button>` : ''}
+    sheet.innerHTML = `<div class="sheet-card res" role="dialog" aria-label="Sonuç">
+      <p class="big">Yüzde ${r.pct}</p>
+      <p>${HAND[hand]}, ${esc(item.sections.length > 1 ? `ölçü ${item.sections[sec][0] + 1}–${item.sections[sec][1]}` : item.title)}${r.bpm ? `, tempon ${r.bpm}` : ''}${parts.length ? `. ${parts.join(', ')}` : ''}.</p>
+      <p class="m">${pass ? (isDone(item) ? 'Bu çalışma tamamlandı.' : 'Bu el geçti.') : `Geçmek için yüzde ${PASS} gerekir. Tempoyu düşür ya da zor ölçüyü döngüye al.`}</p>
+      ${nx ? `<button class="pri" data-r="next">${esc(nx.label)}</button>` : ''}
+      <button class="sec" data-r="again">Yeniden çal</button>
+      ${r.weak?.length ? `<button class="sec" data-r="weak">En zor ölçüyü döngüye al (${disp(r.weak[0])})</button>` : ''}
     </div>`;
     sheet.onclick = (e) => {
       if (e.target === sheet) { sheet.hidden = true; return; }
       const b = e.target.closest('[data-r]'); if (!b) return;
       sheet.hidden = true;
-      if (b.dataset.r === 'next') { cleanup(); cfg.onNext(); }
-      if (b.dataset.r === 'again' && pl.mode !== 'follow') pl.play();
-      if (b.dataset.r === 'weak') { pl.setLoop(weak, Math.min(score.measures.length - 1, weak + 1)); updateUI(); status.textContent = `Ölçü ${disp(weak)} döngüde. Yavaş çal, sonra hızlan.`; }
+      if (b.dataset.r === 'next') nx.run();
+      if (b.dataset.r === 'weak') { pl.setLoop(r.weak[0], Math.min(s.measures.length - 1, r.weak[0] + 1)); updateUI(); status.textContent = `Ölçü ${disp(r.weak[0])} döngüde.`; }
     };
   }
-  function addClean() {
-    if (lessonId) {
-      db.clean[lessonId] = (db.clean[lessonId] || 0) + 1;
-      if (db.clean[lessonId] >= 3) {
-        db.clean[lessonId] = 0; pl.tempo += 4; db.tempo[lessonId] = pl.tempo; cfg.onResult?.(2);
-        toast(`Üç temiz tekrar. Tempo ${Math.round(pl.tempo)} oldu.`);
-      } else toast('Temiz tekrar kaydedildi.');
-      save();
-    } else {
-      cleanLocal++;
-      if (cleanLocal >= 3) { cleanLocal = 0; pl.tempo += 4; toast(`Üç temiz tekrar. Tempo ${Math.round(pl.tempo)} oldu.`); }
-    }
-    updateUI();
+  function onState(st) {
+    if (st === 'following') { status.textContent = Inputs.midi.ready ? 'Çalmaya başla, porte seni izliyor.' : 'MIDI klavyeni bağla ya da aşağıdaki tuşlara bas.'; setGo(); }
+    if (st === 'auto-follow') updateUI();
+    if (st === 'follow-step') { const f = pl.fw; if (f) status.textContent = `${pl.stepIdx} / ${pl.steps.length} adım${f.wrong ? `, ${f.wrong} yanlış` : ''}`; }
+    if (st === 'follow-done') { status.textContent = ''; showResult(pl.lastFollow); }
+    if (st === 'playing') setGo();
+    if (st === 'done' || st === 'stopped') { setGo(); if (pl.mode === 'listen') status.textContent = ''; }
+    if (st === 'tempo') updateUI();
   }
-  const setTempo = (d) => { pl.tempo = Math.max(24, Math.min(220, pl.tempo + d)); if (lessonId) { db.tempo[lessonId] = pl.tempo; save(); } updateUI(); if (pl.state === 'playing') { pl.stop(true); pl.play(); } };
-  // Dinleyici bu ekrana bağlı; ders değişince eskisi kalmaz
-  $('.practice').addEventListener('click', (e) => {
-    const t = e.target.closest('button, .mh'); if (!t) return;
+  async function doMidi() {
+    const r = await connectMIDI();
+    if (!r.ok) toast(r.reason === 'denied' ? 'MIDI izni verilmedi. Adres çubuğundaki izinlerden aç.' : 'Bu tarayıcıda MIDI yok. Chrome ya da Edge kullan.');
+    else if (r.busy.length && !r.devices.length) toast('MIDI aygıtı başka bir programda açık. O programı kapatıp yeniden dene.');
+    else if (!r.devices.length) toast('MIDI izni tamam, aygıt görünmüyor. Kabloyu kontrol et.');
+    else toast('MIDI bağlandı: ' + r.devices[0]);
+    updateMidi(); if (pl.mode === 'follow') onState('following');
+  }
+  function openSet() {
+    const sheet = $('.sheet'); sheet.hidden = false;
+    sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-label="Görünüm ve ses">
+      <label class="row">Nota boyutu<input type="range" min="0.75" max="1.5" step="0.05" value="${S.zoom}" data-s="zoom"></label>
+      <label class="row">Ses<input type="range" min="0" max="1" step="0.05" value="${S.volume}" data-s="volume"></label>
+      <label class="row">Nota adları<input type="checkbox" data-s="names" ${S.names ? 'checked' : ''}></label>
+      <label class="row">Parmak numaraları<input type="checkbox" data-s="fingers" ${S.fingers ? 'checked' : ''}></label>
+      <label class="row">Metronom<input type="checkbox" data-s="metro" ${S.metro ? 'checked' : ''}></label>
+      <label class="row">Klavyemden de ses çıksın<input type="checkbox" data-s="midiSound" ${S.midiSound ? 'checked' : ''}></label>
+      <button class="sec" data-r="manual">${db.manual[item.id] ? 'Tamamlandı işaretini kaldır' : 'Bu çalışmayı tamamlandı say'}</button>
+      <button class="pri" data-r="close">Kapat</button></div>`;
+    sheet.onclick = (e) => {
+      if (e.target === sheet) { sheet.hidden = true; return; }
+      const b = e.target.closest('[data-r]'); if (!b) return;
+      if (b.dataset.r === 'manual') { setManual(item.id, !db.manual[item.id]); }
+      sheet.hidden = true;
+    };
+    sheet.oninput = (e) => {
+      const k = e.target.dataset.s; if (!k) return;
+      if (e.target.type === 'checkbox') { S[k] = e.target.checked; save(); if (k === 'metro') pl.metro = S[k]; if (k === 'names' || k === 'fingers') relayout(); return; }
+      S[k] = +e.target.value; save();
+      if (k === 'zoom') relayout();
+      if (k === 'volume') setVolume(S.volume);
+    };
+  }
+  const relayout = () => { engrave(); if (pl.state === 'following') pl.enterFollow(); else if (pl.state === 'idle') pl.previewStart(); };
+  $('.pr').addEventListener('click', (e) => {
+    const t = e.target.closest('button, .mh'); if (!t || t.closest('.sheet')) return;
     if (t.classList.contains('mh')) {
       if (!loopPick) return;
       const m = +t.dataset.m;
@@ -212,86 +227,22 @@ export function mountPractice(root, cfg, { onExit }) {
       else { loopPick = false; pl.setLoop(loopA, m); loopA = null; updateUI(); }
       return;
     }
-    if (t.dataset.mode) { ensureAudio(); pl.stop(); pl.mode = t.dataset.mode; updateUI(); if (pl.mode === 'follow') { pl.startFollow(); if (!Inputs.midi.ready) status.textContent = 'MIDI klavyeni bağla ya da ekrandaki tuşlara bas.'; return; } if (pl.mode === 'wait') status.textContent = 'Ekrandaki tuşlara bas, MIDI klavye bağla ya da ayarlardan mikrofonu aç.'; else if (pl.mode === 'with') status.textContent = 'Seçili eli sen çal; öteki eli uygulama çalar.'; else status.textContent = ''; return; }
+    if (t.dataset.mode) { ensureAudio(); pl.stop(); pl.mode = t.dataset.mode; if (pl.mode === 'follow') pl.startFollow(); else status.textContent = ''; updateUI(); return; }
     if (t.dataset.hand) { pl.stop(); pl.setHands(t.dataset.hand); updateUI(); return; }
-    if (t.dataset.a === 'weak') { const b = +t.dataset.b; pl.setLoop(b, Math.min(score.measures.length - 1, b + 1)); updateUI(); status.textContent = `Ölçü ${disp(b)} döngüde. Yavaş çal, sonra hızlan.`; return; }
-    if (t.dataset.a === 'midi') { doMidi(); return; }
     switch (t.dataset.a) {
-      case 'back': cleanup(); onExit(); break;
-      case 'how': { const h = $('.p-how'); h.hidden = !h.hidden; t.classList.toggle('on', !h.hidden); relayout(); break; }
-      case 'set': openSheet(); break;
-      case 'play': if (pl.state !== 'idle') { pl.stop(); setPlayIcon(false); } else pl.play(); break;
+      case 'how': { const h = $('.pr-how'); h.hidden = !h.hidden; t.setAttribute('aria-expanded', !h.hidden); break; }
+      case 'set': openSet(); break;
+      case 'play': ensureAudio(); if (pl.mode === 'listen' && pl.state === 'playing') pl.stop(); else pl.play(); setGo(); break;
       case 't-': setTempo(-4); break;
       case 't+': setTempo(4); break;
-      case 'clean': addClean(); break;
-      case 'hint': pl.hint = HNEXT[pl.hint]; S.hint = pl.hint; save(); if (pl.state === 'following') pl.enterFollow(); else if (pl.state === 'idle') pl.previewStart(); updateUI(); break;
+      case 'midi': doMidi(); break;
+      case 'hint': pl.hint = pl.hint === 'off' ? 'always' : 'off'; S.hint = pl.hint; save(); if (pl.state === 'following') pl.enterFollow(); else if (pl.state === 'idle') pl.previewStart(); updateUI(); break;
       case 'loop':
         if (pl.loop || loopPick) { loopPick = false; loopA = null; pl.setLoop(null); }
-        else { pl.stop(); loopPick = true; }
+        else { loopPick = true; }
         updateUI(); break;
-      case 'break': {
-        const n = score.measures.length, a = Math.floor(Math.random() * Math.max(1, n - 1)), b = Math.min(n - 1, a + 1);
-        pl.hint = 'off'; pl.setLoop(a, b); updateUI();
-        if (pl.state === 'following') pl.enterFollow();
-        status.textContent = `Başlangıç: ölçü ${disp(a)}. Önce sol elin ilk notasını söyle.`;
-        break;
-      }
-      case 'finish': cleanup(); cfg.onDone(); break;
-      case 'hard': cleanup(); cfg.onHard(); break;
     }
   });
-  async function doMidi() {
-    const r = await connectMIDI();
-    if (!r.ok) toast(r.reason === 'denied' ? 'MIDI izni verilmedi. Adres çubuğundaki izinlerden aç.' : 'Bu tarayıcıda MIDI yok.');
-    else if (r.busy.length && !r.devices.length) toast('MIDI aygıtı başka bir programda açık. O programı kapatıp tekrar dene.');
-    else if (!r.devices.length) toast('MIDI izni tamam ama aygıt görünmüyor. Kabloyu kontrol et.');
-    else toast('MIDI bağlandı: ' + r.devices[0]);
-    updateMidi();
-  }
-  function openSheet() {
-    const sheet = $('.sheet'); sheet.hidden = false;
-    const midiLine = Inputs.midi.supported ? `<button class="chip" data-s="midi">${Inputs.midi.ready ? (Inputs.midi.devices.length ? 'Bağlı: ' + esc(Inputs.midi.devices.join(', ')) : 'MIDI aygıtı bulunamadı, tekrar dene') : 'MIDI klavyeyi bağla'}</button>` : '<p class="muted">Bu tarayıcıda MIDI yok. Chrome, Edge ya da Firefox kullan; iPhone ve iPad’de mikrofonu aç.</p>';
-    sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-label="Ayarlar">
-      <h2>Ayarlar</h2>
-      <label class="row"><span>Parmak numaraları</span><input type="checkbox" data-c="fingers" ${S.fingers ? 'checked' : ''}></label>
-      <label class="row"><span>Nota adları</span><input type="checkbox" data-c="names" ${S.names ? 'checked' : ''}></label>
-      <label class="row"><span>Metronom</span><input type="checkbox" data-c="metro" ${pl.metro ? 'checked' : ''}></label>
-      <label class="row"><span>Baştan bir ölçü say</span><input type="checkbox" data-c="countIn" ${pl.countIn ? 'checked' : ''}></label>
-      <label class="row"><span>Tekrarları çal</span><input type="checkbox" data-c="repeats" ${pl.useRepeats ? 'checked' : ''}></label>
-      <label class="row"><span>Döngüde tempoyu artır</span><input type="checkbox" data-c="autoUp" ${pl.autoUp ? 'checked' : ''}></label>
-      <label class="row"><span>MIDI'den geleni uygulamada seslendir</span><input type="checkbox" data-c="midiSound" ${S.midiSound ? 'checked' : ''}></label>
-      <label class="row"><span>Nota boyu</span><input type="range" min="0.7" max="1.6" step="0.05" value="${S.zoom}" data-r="zoom"></label>
-      <label class="row"><span>Ses düzeyi</span><input type="range" min="0" max="1" step="0.05" value="${S.volume}" data-r="vol"></label>
-      <div class="row wrap">${midiLine}<button class="chip" data-s="mic">${pl.mic ? 'Mikrofonu kapat' : 'Mikrofonu aç'}</button></div>
-      <p class="muted">Mikrofon tek ses ve basit iki seste iyi çalışır. Kalabalık akorlarda MIDI kullan.</p>
-      <button class="primary" data-s="close">Kapat</button>
-    </div>`;
-    sheet.onclick = async (e) => {
-      if (e.target === sheet) { sheet.hidden = true; return; }
-      const b = e.target.closest('[data-s]'); if (!b) return;
-      if (b.dataset.s === 'close') sheet.hidden = true;
-      if (b.dataset.s === 'midi') { await doMidi(); openSheet(); }
-      if (b.dataset.s === 'mic') { const on = !pl.mic; const ok = await pl.enableMic(on); if (!ok) toast('Mikrofon izni verilmedi.'); openSheet(); }
-    };
-    sheet.onchange = (e) => {
-      const c = e.target.dataset.c;
-      if (c === 'fingers' || c === 'names') { S[c] = e.target.checked; save(); engrave(); pl.previewStart(); }
-      if (c === 'midiSound') { S.midiSound = e.target.checked; save(); if (S.midiSound) ensureAudio(); }
-      if (c === 'metro') { pl.metro = S.metro = e.target.checked; save(); }
-      if (c === 'countIn') { pl.countIn = S.countIn = e.target.checked; save(); }
-      if (c === 'repeats') pl.setRepeats(e.target.checked);
-      if (c === 'autoUp') pl.autoUp = e.target.checked;
-    };
-    sheet.oninput = (e) => {
-      if (e.target.dataset.r === 'zoom') { S.zoom = +e.target.value; save(); engrave(); pl.previewStart(); }
-      if (e.target.dataset.r === 'vol') { S.volume = +e.target.value; setVolume(S.volume); save(); }
-    };
-  }
-  const relayout = () => {
-    engrave();
-    if (pl.state === 'following') pl.enterFollow();
-    else if (pl.state === 'idle') pl.previewStart();
-  };
   let lastW = view.clientWidth, rT;
   const ro = new ResizeObserver(() => {
     if (!view.isConnected || view.clientWidth < 100 || Math.abs(view.clientWidth - lastW) < 8) return; lastW = view.clientWidth;
@@ -300,11 +251,8 @@ export function mountPractice(root, cfg, { onExit }) {
   ro.observe(view);
   let wake = null;
   (async () => { try { wake = await navigator.wakeLock?.request('screen'); } catch (e) { /* */ } })();
-  const timeLog = setInterval(() => { if (document.visibilityState === 'visible') logMinutes(5); }, 5000);
   setVolume(S.volume);
-  pl.previewStart();
+  pl.mode = 'follow'; pl.previewStart(); pl.startFollow();
   updateUI(); updateMidi(); showLoad();
-  if (cfg.startMode) { pl.mode = cfg.startMode; updateUI(); if (pl.mode === 'follow') pl.startFollow(); }
-  function cleanup() { clearTimeout(rT); offMidi(); removeEventListener('piano-progress', showLoad); pl.destroy(); kb.destroy(); ro.disconnect(); offInput(); clearInterval(timeLog); wake?.release?.(); }
-  return { cleanup, player: pl };
+  return { cleanup() { clearTimeout(rT); removeEventListener('midi-devices', onMidiDev); removeEventListener('piano-progress', showLoad); pl.destroy(); kb.destroy(); ro.disconnect(); offInput(); wake?.release?.(); enableComputerKeys(false); }, player: pl };
 }

@@ -1,70 +1,38 @@
-# İki El
+# Piyano Okulu
 
-Fa anahtarını oturtmak, iki eli ayırmak, klasik parça çalmak, pop şarkılara eşlik etmek ve şan alıştırmalarını piyanoda çalmak için kişisel çalışma uygulaması. Telefon, tablet ve bilgisayarda çalışır, internet olmadan da açılır.
+Başlangıçtan ileri seviyeye piyano eğitim ağacı ve ayrı bir fa anahtarı alanı. Telefon, tablet ve bilgisayarda çalışır, internet olmadan da açılır. MIDI klavyeyi bağladığında porte seni nota nota izler.
 
-## GitHub'a yükleme
-
-1. GitHub'da yeni bir depo aç (bu proje için: `pp`). Herkese açık olmalı; ücretsiz planda Pages böyle çalışır.
-2. **Add file > Upload files** ile bu klasörün **içindekileri** sürükle (`index.html` deponun en üstünde olmalı).
-3. **Settings > Pages** bölümünde Source: *Deploy from a branch*, Branch: `main`, klasör: `/ (root)` seç, kaydet.
-4. Bir iki dakika sonra adres hazır: `https://burakbastas.github.io/pp/`
-
-Telefonda bu adresi açıp “Ana ekrana ekle” dersen uygulama gibi açılır.
-
-Bilgisayarda denemek için: klasörde `python3 -m http.server` çalıştır, `http://localhost:8000` adresini aç. `index.html` dosyasına çift tıklamak çalışmaz.
-
-## Klavye bağlantısı
-
-| Durum | Yöntem |
-|---|---|
-| Dijital piyano, Chrome/Edge/Firefox (bilgisayar, Android) | USB ya da Bluetooth MIDI: çalışma ekranında **MIDI bağla**. Çalmaya başlayınca **Takip** kipi açılır |
-| iPhone/iPad | Safari MIDI desteklemiyor. Mikrofonu aç ya da “Birlikte” kipini kullan |
-| Akustik piyano | Mikrofon: tek ses ve basit iki seste iyi çalışır |
-| Klavye yok | Ekrandaki tuşlar ya da bilgisayarda A S D F G H J K tuşları (Z ve X oktav değiştirir) |
+Adres: https://burakbastas.github.io/pp/
 
 ## İçindekiler
 
-- **Bugün:** beş kolun (Okuma, Etüt, Eser, Eşlik, Şan) her birinden sıradaki adım. 15, 30 ya da 45 dakika. Ünite dersi, hazır final ve günün tekrarları burada görünür.
-- **Üniteler:** sekiz ünite, iki görünüm. **Yol** önerilen karışık sırayı gösterir: ders, çalışmalar, final. **Kollar** tek konuda ilerlemek içindir (Okuma, Etüt, Eser, Eşlik, Şan). Hiçbir ünite kilitli değildir; bildiğin üniteyi finalle geçebilirsin.
-- **Tekrar:** biten çalışmalar 1, 2, 4, 8, 16 ve 30 gün aralıklarla geri gelir. İyi geçerse süre uzar, zorlanırsan yarın yine gelir.
-- **Repertuvar:** bütün eserler, ünite ünite.
-- **Araçlar:** nota okuma antrenörü, deşifre üretici, akor bulucu, kendi şarkın, serbest şan, ayarlar.
+**Eğitim ağacı.** On iki ünite, Royal Conservatory of Music (RCM) piyano müfredatının Hazırlık A’dan Seviye 10’a uzanan basamaklarına denk gelir. Her ünitede:
 
-Eşlik dersleri aynı sırayla ilerler: akoru tanı, sol el, sağ el, iki el yavaş, tempoda. Kendi şarkın için akorları yaz (`Am F | C G`, `Lam Fa`), kalıp seç, tonu kaydır.
+- Parmak alıştırmaları: sağ el, sol el ve iki el için bağımsızlık, parmak geçişi ve atlama. Seviye yükseldikçe alıştırmalar değişir: beş parmaktan iki oktav diziye, arpejlere, dominant yedililere, oktavlara ve dört oktav dizilere.
+- Alıştırmalar: Beyer Op. 101, Czerny Op. 821, Hanon 1–20.
+- Etütler: Czerny Op. 599, 824, 453 ve 840, Köhler, Berens, Bertini, Burgmüller Op. 100, Chopin prelüdleri.
+- Eserler: Bach, Mozart, Beethoven, Schumann, Çaykovski, Grieg, Chopin, Liszt, Joplin. RCM listesinde adı geçenler işaretlidir.
 
-## Yıldızlar
+**Fa anahtarı.** On iki aşamada kırk sekiz etüt: üç durak notadan başlar, komşu notalar, konumlar, çizgi ve aralıklar, ek çizgiler, tondaki işaretler, ritim, akor.
 
-| Yıldız | Takip ve Bekle | Okuma | Akor |
-| --- | --- | --- | --- |
-| 1 | yüzde 70 ve üstü, ya da Bitti düğmesi | yüzde 80 | yüzde 60 |
-| 2 | yüzde 90 ve üstü, ya da üç temiz tekrar | yüzde 90 ve nota başına en çok 2,5 sn | yüzde 80 |
-| 3 | yüzde 98 ve üstü, adım temposunda, tuş yardımı kapalı | yüzde 98 ve en çok 1,5 sn | yüzde 100 |
+**Çalışma ekranı.** Çal seçiliyken porte MIDI klavyeni izler; MIDI yoksa ekrandaki tuşlara ya da bilgisayar klavyesine basabilirsin. Dinle kipinde parçayı seçtiğin tempoda duyarsın. Uzun parçalar bölümlere ayrılır. Sol, sağ ve iki el ayrı ayrı çalışılır; yüzde 90 alan bölüm geçilmiş sayılır.
 
-Ünite finali okuma, akor tanıma ve Takip kipinde çalmadan oluşur. Finali geçmek üniteyi tamamlar, unvan bitirilen ünite sayısıyla yükselir.
+## Klavye bağlantısı
 
-## Yeni alıştırma eklemek
+Chrome ya da Edge kullan. Klavyeyi USB ile bağla, çalışma ekranındaki “MIDI bağla” düğmesine bas, izin ver. Bir kez izin verdikten sonra uygulama açılışta kendisi bağlanır. Safari ve iPhone Web MIDI desteklemez.
 
-`js/data/exercises.js` içine:
+## Kaynaklar
 
-```js
-add('benim1', { title: 'Benim alıştırmam', key: 0, time: [4, 4], tempo: 70,
-  rh: 'c4:4_1 d4_2 e4_3 f4_4 | g4:1_5',
-  lh: 'c3:2_5 g3:2_1 | c3:1_5' });
-```
-
-Biçim: `perde:süre_parmak`. Süreler `1 2 4 8 16`, noktalı `4.`. `!` stakato, `~` bağ, `(` `)` legato yayı, `<c3 e3 g3>:2` akor, `r:4` sus, `|` ölçü çizgisi, `//` aynı porteye ikinci ses. Süre yazılmazsa bir önceki süre geçerlidir. Bemol `bb3`, diyez `f#3`.
-
-Sonra `js/data/units.js` içinde ilgili üniteye `ex('benim1', 'Neden bu alıştırma')` satırı ekle. Ünite dersleri `js/data/lessons.js` içindedir.
+- Seviye ve teknik hedefler: [RCM Piano Syllabus 2022](https://teacherportal.rcmusic.com/getattachment/57f3734d-97e5-4777-b67e-4b1111ee31a3/piano-syllabus-2022-edition.pdf), [teknik çizelge](https://colorinmypiano.com/wp-content/files/RCM_2022_Technical_Requirements_Charts_Prep-10.pdf)
+- Seviye listeleri: [repertuvar](https://www.dacapomusic.ca/blog/rcm-piano-repertoire-all-pieces), [etütler](https://www.dacapomusic.ca/blog/rcm-piano-etudes-all-pieces)
+- Etüt kitaplarının sırası: [Jean-Michel Serres](https://jeanmichelserres.com/?p=1266)
+- Parmak geçişi ve atlama: [Chuan C. Chang, Fundamentals of Piano Practice](https://fundamentals-of-piano-practice.readthedocs.io/)
+- Notalar (kamu malı eserler): [Mutopia Project](https://www.mutopiaproject.org), [Nathanael Meister’in LilyPond okulu](https://github.com/nathanaelmeister/Piano_-_First_two_hand_exercises), [da-x/czerny](https://github.com/da-x/czerny)
+- Parmak alıştırmaları ve fa anahtarı etütleri bu uygulama için yazıldı.
+- Piyano sesi: Musyng Kite, [midi-js-soundfonts](https://github.com/gleitz/midi-js-soundfonts). Yazı tipleri: Old Standard TT ve Libre Franklin (SIL OFL).
 
 ## Yapı
 
-`js/notation` nota ayrıştırma ve SVG dizgi, `js/audio` ses ve girişler, `js/gen` eşlik/şan/deşifre üreticileri, `js/data` ders ve notalar, `js/ui` ekranlar. Derleme adımı yok, dış kütüphane yok.
+`js/notation` nota ayrıştırma ve SVG dizgi, `js/audio` ses ve MIDI, `js/ui` çalışma ekranı, `js/data/tree.js` müfredat, `js/data/n` notalar (ünite başına ayrı dosya). Derleme adımı ve dış kütüphane yok.
 
-## Lisans notları
-
-- Notalar [Mutopia Project](https://www.mutopiaproject.org) LilyPond kaynaklarından dönüştürüldü. Bir kısmı kamu malı dizgi, bir kısmı CC BY-SA'dır (Schumann ve bazı Bach parçaları); her eserin ders sayfasında yazar. CC BY-SA olanları paylaşırsan aynı lisans geçerlidir.
-- İki Petzold menuetinin parmak numaraları bu uygulama için önerilmiştir; diğerleri kaynaktan gelir ya da yoktur. Öğretmenin başka bir parmak verirse onu kullan.
-- Piyano sesi: Musyng Kite Acoustic Grand, [midi-js-soundfonts](https://github.com/gleitz/midi-js-soundfonts) MP3 çıktısı, CC BY-SA 3.0 (`sounds/piano/KAYNAK.txt`).
-- Alegreya yazı tipleri: SIL Open Font License (`fonts/OFL.txt`).
-- Müzik işaretleri GNU FreeFont/FreeSerif anahatlarından alındı (GPLv3 + font exception).
-- Uygulamada şarkı notası ya da sözü yoktur; yalnız akor kalıpları vardır. Enver Tufan metodunun içeriği uygulamaya alınmamıştır.
+Nota biçimi: `perde:süre_parmak`, örneğin `c4:4_1`. `!` stakato, `~` bağ, `<c3 e3 g3>:2` akor, `r:4` sus, `//` ikinci ses. `%b` ve `%t` ölçü başında anahtar değiştirir.
