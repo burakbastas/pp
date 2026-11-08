@@ -4,6 +4,7 @@ import { db, save, itemState, isDone, isStarted, required, exportData, importDat
 import { mountPractice } from './ui/practice.js';
 import { GLYPHS } from './notation/glyphs.js';
 import { autoConnectMIDI, connectMIDI, Inputs } from './audio/input.js';
+import { installAudioUnlock } from './audio/piano.js';
 import { esc, toast } from './ui/dom.js';
 
 const app = document.getElementById('app');
@@ -190,6 +191,7 @@ function route() {
   tree();
 }
 addEventListener('hashchange', route);
+installAudioUnlock();
 route();
 autoConnectMIDI();
 if ('serviceWorker' in navigator && isSecureContext) {

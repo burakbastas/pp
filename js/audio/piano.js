@@ -15,11 +15,45 @@ export function ensureAudio() {
     wet = ctx.createGain(); wet.gain.value = 0.1;
     const rev = ctx.createConvolver(); rev.buffer = impulse(1.3, 3);
     dry.connect(comp); wet.connect(rev); rev.connect(comp); comp.connect(master); master.connect(ctx.destination);
+    ctx.onstatechange = flushPending;
     noise = ctx.createBuffer(1, ctx.sampleRate * 0.05, ctx.sampleRate);
     const d = noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   }
-  if (ctx.state === 'suspended') ctx.resume();
+  if (ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume()?.catch?.(() => { });
   return ctx;
+}
+// Tarayıcılar sesi ancak dokunuş bittiğinde ya da tıklamada açar; tuşa basış (pointerdown) yetmez.
+// Ses henüz açılmadıysa basılan nota bekletilir, açılır açılmaz duyulur.
+let pending = null, primed = false;
+function flushPending() {
+  if (ctx?.state !== 'running' || !pending) return;
+  const p = pending; pending = null;
+  if (performance.now() - p.at < 900) playNote(p.midi, 0, 0.6, p.vel);
+}
+function prime() {
+  if (primed || ctx.state === 'closed') return;
+  primed = true;
+  const s = ctx.createBufferSource(); s.buffer = ctx.createBuffer(1, 1, ctx.sampleRate); s.connect(ctx.destination); s.start(0);
+}
+// Eski iPad'lerde sessize alma düğmesi Web Audio'yu da susturur; sessiz bir ses öğesi bunu aşar
+function legacyIOSPlayback() {
+  const ios = /iP(ad|hone|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (!ios || navigator.audioSession) return;
+  const n = 800, b = new ArrayBuffer(44 + n * 2), v = new DataView(b), w = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 8000, true); v.setUint32(28, 16000, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+  const a = new Audio(URL.createObjectURL(new Blob([b], { type: 'audio/wav' }))); a.loop = true; a.setAttribute('playsinline', ''); a.play().catch(() => { });
+}
+export function installAudioUnlock() {
+  if (navigator.audioSession) { try { navigator.audioSession.type = 'playback'; } catch (e) { /* */ } }
+  let legacy = false;
+  const unlock = () => {
+    ensureAudio(); prime();
+    if (!legacy) { legacy = true; legacyIOSPlayback(); }
+  };
+  ['pointerup', 'touchend', 'click', 'keydown'].forEach(ev => addEventListener(ev, unlock, { capture: true, passive: true }));
+  // Ekran kilitlenip açılınca ya da başka uygulamadan dönünce ses yeniden başlar
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && ctx && ctx.state !== 'running') ctx.resume()?.catch?.(() => { }); });
 }
 let currentVolume = 0.9;
 export function setVolume(v) { currentVolume = v; if (master) master.gain.value = v; }
@@ -133,6 +167,7 @@ function synthVoice(midi, t, vel) {
 
 export function playNote(midi, when = 0, dur = 0.6, vel = 0.75) {
   ensureAudio();
+  if (ctx.state !== 'running') { if (!when) pending = { midi, vel, at: performance.now() }; return { release() { } }; }
   const t = Math.max(when || 0, ctx.currentTime);
   const found = findSample(midi);
   const { g, oscs, life } = found ? sampleVoice(midi, t, vel, found) : synthVoice(midi, t, vel);
@@ -159,6 +194,7 @@ export function stopAll() {
 }
 export function click(when, strong) {
   ensureAudio();
+  if (ctx.state !== 'running') return;
   const o = ctx.createOscillator(), g = ctx.createGain();
   o.type = 'triangle'; o.frequency.value = strong ? 1760 : 1175;
   g.gain.setValueAtTime(strong ? 0.26 : 0.16, when);
