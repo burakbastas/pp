@@ -71,9 +71,9 @@ export function mountChordDrill(root, { chords, title, onExit, onDone }) {
     }
   });
   function finish() {
-    const pct = Math.round(100 * right / ROUNDS), pass = pct >= 80;
-    if (pass) onDone?.(false);
-    $('.r-stage').innerHTML = `<div class="r-end"><h2>${ROUNDS} akorda yüzde ${pct} ilk denemede doğru</h2>
+    const pct = Math.round(100 * right / ROUNDS), pass = pct >= 80, stars = pct === 100 ? 3 : pass ? 2 : pct >= 60 ? 1 : 0;
+    if (stars) onDone?.(false, stars);
+    $('.r-stage').innerHTML = `<div class="r-end"><div class="stars big">${'★'.repeat(stars)}<i>${'★'.repeat(3 - stars)}</i></div><h2>${ROUNDS} akorda yüzde ${pct} ilk denemede doğru</h2>
       <p>${pass ? 'Eller akorları biliyor. Şimdi çalmaya geçelim.' : 'Hedef yüzde 80. Bir tur daha çalış, gerekirse tuşları göster.'}</p>
       <div class="r-actions">${pass ? '<button class="primary" data-a="next">Sonraki adım</button>' : ''}<button class="${pass ? 'txt-btn' : 'primary'}" data-a="again">Bir tur daha</button></div></div>`;
     kb.clearMarks();

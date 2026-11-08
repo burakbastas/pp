@@ -109,8 +109,9 @@ export function mountReading(root, levelId, { onExit, onPass }) {
     const pct = Math.round(100 * right / ROUND), avgN = totalMs / ROUND / 1000, avg = avgN.toFixed(1).replace('.', ',');
     const weak = Object.entries(roundErr).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([m]) => { const p = pool.find(x => x.midi === +m); return SOLFEGE[p.step] + p.oct; });
     const pass = pct >= 90 && avgN <= 2.5;
-    if (pass) onPass?.();
-    $('.r-stage').innerHTML = `<div class="r-end"><h2>Yüzde ${pct} doğru, nota başına ${avg} sn</h2>
+    const stars = pct >= 98 && avgN <= 1.5 ? 3 : pass ? 2 : pct >= 80 ? 1 : 0;
+    if (stars) onPass?.(stars);
+    $('.r-stage').innerHTML = `<div class="r-end"><div class="stars big">${'★'.repeat(stars)}<i>${'★'.repeat(3 - stars)}</i></div><h2>Yüzde ${pct} doğru, nota başına ${avg} sn</h2>
       <p>${pass ? 'Hedefi tutturdun, bu düzey kaydedildi.' : 'Hedef yüzde 90 ve 2,5 saniye. Bir tur daha çalış; zayıf notalar daha sık gelir.'}</p>
       ${weak.length ? `<p>En çok karışanlar: ${weak.join(', ')}</p>` : ''}
       <div class="r-actions"><button class="primary" data-a="again">Bir tur daha</button><button class="txt-btn" data-a="back">Bitir</button></div></div>`;

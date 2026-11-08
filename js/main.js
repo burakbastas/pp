@@ -1,4 +1,6 @@
-import { STRANDS, UNITS, ITEMS, itemById } from './data/units.js';
+import { STRANDS, UNITS, ITEMS, itemById, pathOf, TITLES } from './data/units.js';
+import { LESSONS } from './data/lessons.js';
+import { mountLesson } from './ui/lesson.js';
 import { MINUTES, READ_LEVELS } from './data/curriculum.js';
 import { EXERCISE, pieceDef, PIECES, preludeBlocks } from './data/exercises.js';
 import { chartToScore, PATTERNS, PROGRESSIONS, romanChart, parseChart, transposeChart, bestSignature, flatTarget } from './gen/accomp.js';
@@ -53,6 +55,10 @@ export function stepsOf(it) {
       out.push({ t: 'İki el', group: sect, hands: 'both', tempo: slow, from: a, to: b });
     }
     if (span > chunk) out.push({ t: 'Baştan sona', hands: 'both', tempo: mid, from, to });
+  } else if (it.kind === 'final') {
+    out = [{ t: 'Nota okuma', read: it.level }];
+    if (it.chords.length) out.push({ t: 'Akor tanıma', quiz: it.chords });
+    if (it.perf) { const p = PIECES[it.perf.piece], from = it.perf.from || 0, to = it.perf.to ?? pieceDef(it.perf.piece, {}).rh.length; out.push({ t: `Çalma: ${it.perf.title}`, hands: 'both', tempo: Math.round(p.tempo * 0.6), from, to: Math.min(to, from + 8), hint: 'Takip kipinde iki elle çal. Yüzde 70 ve üstü geçer.', measured: true }); }
   } else if (it.kind === 'ak') out = it.steps;
   else if (it.kind === 'voc') {
     const k = Math.min(2, it.keys);
@@ -64,15 +70,45 @@ const stepState = (id) => db.steps[id] || (db.steps[id] = {});
 const doneCount = (it) => stepsOf(it).filter((_, i) => db.steps[it.id]?.[i]).length;
 const isDone = (it) => doneCount(it) === stepsOf(it).length;
 const nextIdx = (it) => { const s = stepsOf(it); for (let i = 0; i < s.length; i++) if (!db.steps[it.id]?.[i]) return i; return 0; };
-function markStep(it, i) { stepState(it.id)[i] = true; save(); }
+const INTERVALS = [1, 2, 4, 8, 16, 30];
+const addDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+function markStep(it, i, stars = 1) {
+  stepState(it.id)[i] = true;
+  const k = `${it.id}:${i}`; db.stars[k] = Math.max(db.stars[k] || 0, stars);
+  if (isDone(it)) {
+    if (it.kind !== 'final' && !['studio', 'sight'].includes(it.kind) && !db.rev[it.id]) db.rev[it.id] = { box: 0, due: addDays(1) };
+    if (it.kind === 'final' && db.skipping === it.unit) {
+      unitItems(it.unit).forEach(x => stepsOf(x).forEach((_, j) => { stepState(x.id)[j] = true; const kk = `${x.id}:${j}`; db.stars[kk] = db.stars[kk] || 1; }));
+      db.ders[it.unit] = true; db.skipping = null;
+    }
+  }
+  save();
+}
+function reviewed(it, good) { const r = db.rev[it.id] || { box: 0 }; r.box = good ? Math.min(INTERVALS.length - 1, r.box + 1) : 0; r.due = addDays(INTERVALS[r.box]); db.rev[it.id] = r; save(); }
+const itemStars = (it) => { const s = stepsOf(it); if (!isDone(it)) return 0; return Math.round(s.reduce((a, _, i) => a + (db.stars[`${it.id}:${i}`] || 1), 0) / s.length); };
+const totalStars = () => ITEMS.reduce((a, x) => a + itemStars(x), 0);
+const unitDone = (n) => { const f = UNITS[n - 1].final; return isDone(f); };
+const doneUnits = () => UNITS.filter(u => unitDone(u.n)).length;
+const title = () => [...TITLES].reverse().find(t => doneUnits() >= t.at);
+const nextTitle = () => TITLES.find(t => t.at > doneUnits());
+const dueList = () => ITEMS.filter(x => db.rev[x.id] && db.rev[x.id].due <= today());
+const starsHtml = (n, tot = 3) => `<span class="stars">${'★'.repeat(n)}<i>${'★'.repeat(tot - n)}</i></span>`;
+function ribbon() {
+  const t = title(), nx = nextTitle();
+  return `<div class="rib"><span class="rname"><b>${t.name}</b><small>${t.mean}</small></span><span class="rnext">${nx ? `${nx.name}: ${nx.at - doneUnits()} ünite kaldı` : ''}</span><span class="rstat"><b>★ ${totalStars()}</b><b>${streak()} gün</b></span></div>`;
+}
 const unitItems = (n) => ITEMS.filter(x => x.unit === n);
 const unitProgress = (n) => { const a = unitItems(n); const tot = a.reduce((s, x) => s + stepsOf(x).length, 0), d = a.reduce((s, x) => s + doneCount(x), 0); return { tot, d, pct: tot ? Math.round(100 * d / tot) : 0 }; };
-const curUnit = () => (UNITS.find(u => unitItems(u.n).some(x => !isDone(x))) || UNITS[UNITS.length - 1]).n;
+const curUnit = () => (UNITS.find(u => u.n >= (db.place || 1) && !unitDone(u.n)) || UNITS.find(u => !unitDone(u.n)) || UNITS[UNITS.length - 1]).n;
 
 export function stepConfig(it, i) {
   const s = stepsOf(it)[i], S = db.settings;
   const common = { hands: s.hands, title: it.title, sub: `${s.group ? s.group + ', ' : ''}${s.t}`, goal: s.hint || it.why, how: s.how || (s.hands ? HAND_HOW[s.hands] : []), lessonId: `${it.id}:${i}`, noHint: s.noHint };
   if (it.kind === 'ex') return { ...common, def: EXERCISE[it.ex], tempo: s.tempo };
+  if (it.kind === 'final') {
+    const pid = it.perf.piece, def = pieceDef(pid, { from: s.from, to: s.to });
+    return { ...common, def, tempo: s.tempo, firstBar: s.from, startMode: 'follow' };
+  }
   if (it.kind === 'piece') {
     const def = pieceDef(it.piece, { from: s.from, to: s.to, keepRepeats: false });
     return { ...common, def, tempo: s.tempo, src: `${PIECES[it.piece].composer}. ${PIECES[it.piece].src}`, firstBar: s.from, showBreak: true };
@@ -95,13 +131,13 @@ export function stepConfig(it, i) {
 function route() {
   active?.cleanup?.(); active = null;
   const hash = location.hash.slice(2) || 'bugun';
-  const [page, arg, arg2] = hash.split('/');
-  tabs.hidden = ['adim', 'calis', 'oku'].includes(page);
+  const [page, arg, arg2, arg3] = hash.split('/');
+  tabs.hidden = ['adim', 'calis', 'oku', 'ders'].includes(page);
   document.body.classList.toggle('immersive', tabs.hidden);
-  const tabOf = { unite: 'uniteler', is: 'uniteler', sarki: 'eslik', ayar: 'araclar' }[page] || page;
+  const tabOf = { unite: 'uniteler', is: 'uniteler', kol: 'uniteler', eslik: 'uniteler', san: 'uniteler', sarki: 'araclar', ayar: 'araclar' }[page] || page;
   tabs.querySelectorAll('a').forEach(a => a.classList.toggle('on', a.dataset.p === tabOf));
   window.scrollTo(0, 0);
-  ({ bugun, uniteler, unite: () => unite(+arg), is: () => isPage(arg), adim: () => adim(arg, +arg2), eslik, sarki, san, araclar, ayar, calis: openStash, oku: () => openRead(arg) }[page] || bugun)();
+  ({ bugun, uniteler, unite: () => unite(+arg), is: () => isPage(arg), adim: () => adim(arg, +arg2, arg3 === 'rev'), ders: () => ders(+arg), kol: () => kol(arg), tekrar, repertuvar, eslik, sarki, san, araclar, ayar, calis: openStash, oku: () => openRead(arg) }[page] || bugun)();
 }
 addEventListener('hashchange', route);
 const go = (h) => { location.hash = '#/' + h; };
@@ -109,21 +145,31 @@ function launch(cfg, back2) { stash = { ...cfg, back: back2 }; if (location.hash
 function openStash() { if (!stash) return go('bugun'); const b = stash.back || 'bugun'; active = mountPractice(app, stash, { onExit: () => go(b) }); }
 function openRead(id) { active = mountReading(app, id, { onExit: () => go('araclar') }); }
 
+function ders(n) {
+  const u = UNITS[n - 1], data = LESSONS[n]; if (!u || !data) return go('uniteler');
+  active = mountLesson(app, { unit: n, title: `Ünite ${n} dersi`, data, onExit: () => go('unite/' + n), onDone: () => { db.ders[n] = true; save(); toast('Ders tamamlandı.'); go('unite/' + n); } });
+}
 // Bir adımı çalıştır
-function adim(id, i) {
+function adim(id, i, rev) {
   const it = itemById(id); if (!it) return go('uniteler');
   const steps = stepsOf(it), s = steps[i]; if (!s) return go('is/' + id);
-  const exit = () => go(steps.length > 1 ? 'is/' + id : 'unite/' + it.unit);
-  const after = () => {
-    markStep(it, i);
+  const exit = () => go(rev ? 'tekrar' : steps.length > 1 ? 'is/' + id : 'unite/' + it.unit);
+  const award = (n) => { if (n > 0 && !rev) markStep(it, i, n); };
+  const gonext = () => {
+    if (rev) return go('tekrar');
     const nx = steps.findIndex((_, k) => !db.steps[it.id]?.[k]);
     if (nx >= 0) go(`adim/${id}/${nx}`);
     else { toast('Tamamlandı.'); go('unite/' + it.unit); }
   };
-  if (s.read) { active = mountReading(app, s.read, { onExit: () => go('unite/' + it.unit), onPass: () => markStep(it, i) }); return; }
-  if (s.quiz) { active = mountChordDrill(app, { chords: s.quiz, title: it.title, onExit: exit, onDone: (nav) => { if (nav) after(); else markStep(it, i); } }); return; }
+  if (s.read) { active = mountReading(app, s.read, { onExit: exit, onPass: (st) => { if (rev) reviewed(it, st >= 2); else markStep(it, i, st); } }); return; }
+  if (s.quiz) { active = mountChordDrill(app, { chords: s.quiz, title: it.title, onExit: exit, onDone: (nav, st) => { if (nav) gonext(); else if (rev) reviewed(it, st >= 2); else markStep(it, i, st); } }); return; }
   if (s.studio) { markStep(it, i); return go('sarki'); }
-  active = mountPractice(app, { ...stepConfig(it, i), onDone: after, doneLabel: i < steps.length - 1 ? 'Bitti, sonraki adım' : 'Bitti' }, { onExit: exit });
+  let reviewedOnce = false;
+  const rv = (good) => { if (!reviewedOnce) { reviewedOnce = true; reviewed(it, good); } };
+  const cfg = { ...stepConfig(it, i), onResult: award, onNext: gonext, nextLabel: i < steps.length - 1 ? 'Sonraki adım' : 'Bitir' };
+  if (rev) Object.assign(cfg, { onDone: () => { rv(true); go('tekrar'); }, doneLabel: 'İyiydi', onHard: () => { rv(false); go('tekrar'); }, onResult: (n) => rv(n >= 2), onNext: () => go('tekrar'), nextLabel: 'Tekrar listesine dön' });
+  else if (!s.measured) Object.assign(cfg, { onDone: () => { award(1); gonext(); }, doneLabel: i < steps.length - 1 ? 'Bitti, sonraki adım' : 'Bitti' });
+  active = mountPractice(app, cfg, { onExit: exit });
 }
 function strandList(strand) {
   const cur = ITEMS.find(x => x.strand === strand && !isDone(x));
@@ -131,7 +177,7 @@ function strandList(strand) {
 }
 function row(it, here, showUnit) {
   const n = stepsOf(it).length, d = doneCount(it), direct = n === 1;
-  return `<li class="${d === n ? 'd' : ''} ${here ? 'here' : ''}"><a href="#/${direct ? `adim/${it.id}/0` : 'is/' + it.id}">${HEAD(d === n)}<span class="lt"><b>${esc(it.title)}</b><small>${esc(it.composer || it.why || '')}</small></span><span class="lm">${showUnit ? `Ünite ${it.unit}` : d ? `${d}/${n}` : ''}</span></a></li>`;
+  return `<li class="${d === n ? 'd' : ''} ${here ? 'here' : ''}"><a href="#/${direct ? `adim/${it.id}/0` : 'is/' + it.id}">${HEAD(d === n)}<span class="lt"><b>${esc(it.title)}</b><small>${esc(it.composer || it.why || '')}</small></span><span class="lm">${d === n ? starsHtml(itemStars(it)) : showUnit ? `Ünite ${it.unit}` : d ? `${d}/${n}` : ''}</span></a></li>`;
 }
 
 // --- Bugün
@@ -149,6 +195,9 @@ function bugun() {
       <div class="bar"><i style="width:${P.pct}%"></i></div></div>
       <a class="icon-btn" href="#/ayar" aria-label="Ayarlar ve kaynaklar"><svg viewBox="0 0 22 22"><path d="M3 6h9m5 0h2M3 16h2m5 0h9"/><circle cx="14.5" cy="6" r="2.4"/><circle cx="7.5" cy="16" r="2.4"/></svg></a>
     </header>
+    ${!db.ders[un] ? `<a class="callout" href="#/ders/${un}"><b>Önce ünite dersini gör</b><span>Birkaç kart ve kısa bir soru turu</span></a>` : ''}
+    ${unitItems(un).filter(x => x.strand !== 'final').every(isDone) && !unitDone(un) ? `<a class="callout" href="#/is/${U.final.id}"><b>Ünite ${un} finali hazır</b><span>Okuma, akor ve çalma. Geçince ünite tamamlanır.</span></a>` : ''}
+    ${dueList().length ? `<a class="callout rev" href="#/tekrar"><b>Bugün ${dueList().length} tekrar var</b><span>Öğrendiklerini unutmadan önce bir kez çal</span></a>` : ''}
     <div class="mins seg" role="group" aria-label="Süre">${[15, 30, 45].map(m => `<button data-m="${m}" class="${S.minutes === m ? 'on' : ''}">${m} dakika</button>`).join('')}</div>
     <div class="staff-board">${F_CLEF}
       <ol class="staff-lines">${plan.map(({ s, it, m }) => {
@@ -158,7 +207,7 @@ function bugun() {
   }).join('')}</ol>
     </div>
     ${first ? `<a class="primary wide" href="#/adim/${first.it.id}/${nextIdx(first.it)}">${esc(first.s.name)} ile başla</a>` : '<p class="lede">Bütün üniteleri bitirdin.</p>'}
-    <p class="tally">${Math.round(todaySec / 60)} dakika çalıştın, ${st} günlük seri.</p>
+    <p class="tally">${Math.round(todaySec / 60)} dakika çalıştın, ${st} günlük seri, ★ ${totalStars()}.</p>
     <section class="book"><h2>Enver Tufan metodu</h2>
       <div class="book-row"><button class="round" data-b="-1" aria-label="Sayfayı azalt">−</button><strong>Sayfa ${S.book}</strong><button class="round" data-b="1" aria-label="Sayfayı artır">+</button></div>
       <p>Her yeni sayfada önce sol eli solfejle söyle, sonra yalnız sol eli çal, en son iki eli birleştir.</p></section>
@@ -167,27 +216,80 @@ function bugun() {
   app.querySelector('.book').onclick = (e) => { const b = e.target.closest('[data-b]'); if (b) { S.book = Math.max(1, S.book + +b.dataset.b); save(); bugun(); } };
 }
 
-// --- Üniteler: ilerleme haritası
+// --- Üniteler: yol ve kollar
+const BOOK_I = '<svg viewBox="0 0 24 24"><path d="M4 5c3-1.500 6-1.500 8 0v14c-2-1.500-5-1.500-8 0V5ZM20 5c-3-1.500-6-1.500-8 0v14c2-1.500 5-1.500 8 0V5Z"/></svg>';
+const CROWN_I = '<svg viewBox="0 0 24 24"><path d="M3 18 2 7l5.500 4L12 4l4.500 7L22 7l-1 11H3Z"/></svg>';
+function pathHtml(n) {
+  const U = UNITS[n - 1], list = pathOf(n);
+  const nodes = [{ ders: true }, ...list.map(it => ({ it })), { it: U.final, final: true }];
+  let num = 0;
+  const hereIdx = !db.ders[n] ? 0 : nodes.findIndex(x => x.it && !isDone(x.it));
+  const pts = nodes.map((_, i) => 10 + Math.round(26 * (1 + Math.sin(i * 0.95 + n))));
+  const H = 78, svgPath = pts.map((x, i) => { const y = i * H + 29, cx = x + 29; if (!i) return `M${cx} ${y}`; const px = pts[i - 1] + 29, py = (i - 1) * H + 29, m = (py + y) / 2; return `C${px} ${m} ${cx} ${m} ${cx} ${y}`; }).join('');
+  return `<div class="path" style="height:${nodes.length * H}px"><svg class="pline" width="130" height="${nodes.length * H}" aria-hidden="true"><path d="${svgPath}"/></svg>
+  ${nodes.map((x, i) => {
+    const top = i * H, here = i === hereIdx, left = pts[i];
+    if (x.ders) return `<a class="node-row ${here ? 'here' : ''}" href="#/ders/${n}" style="top:${top}px"><span class="node ${db.ders[n] ? 'd' : ''} ${here ? 'cur' : ''}" style="left:${left}px">${BOOK_I}</span><span class="nl"><small>Ders</small><b>Ünite ${n} dersi</b>${here ? '<em>Buradasın</em>' : ''}</span></a>`;
+    const it = x.it, d = isDone(it), S2 = stepsOf(it), direct = S2.length === 1, cnt = doneCount(it);
+    if (!x.final) num++;
+    const lab = x.final ? 'Final' : LABEL[it.strand];
+    return `<a class="node-row ${here ? 'here' : ''}" href="#/${direct ? `adim/${it.id}/0` : 'is/' + it.id}" style="top:${top}px"><span class="node ${x.final ? 'fin' : ''} ${d ? 'd' : ''} ${here ? 'cur' : ''}" style="left:${left}px">${x.final ? CROWN_I : num}</span><span class="nl"><small>${lab}${!d && cnt ? `, ${cnt}/${S2.length}` : ''}</small><b>${esc(it.title)}</b>${d ? starsHtml(itemStars(it)) : here ? '<em>Buradasın</em>' : ''}</span></a>`;
+  }).join('')}</div>`;
+}
+function unitHead(u, big) {
+  const p = unitProgress(u.n), done = unitDone(u.n);
+  return `<span class="un">${u.n}</span><span class="ub"><b>${esc(u.name)}</b><small>${u.level}${done ? ', tamamlandı' : ''}</small>${big ? '' : `<span class="tops">${u.topics.slice(0, 3).map(esc).join(', ')}</span>`}<span class="bar"><i style="width:${p.pct}%"></i></span></span>`;
+}
 function uniteler() {
-  const cur = curUnit();
+  const cur = curUnit(), view = uniteler.view || 'yol';
+  const strandStat = (s) => { const a = ITEMS.filter(x => x.strand === s.id); return { d: a.filter(isDone).length, t: a.length, nx: a.find(x => !isDone(x)) }; };
   const cell = (u, s) => { const a = unitItems(u.n).filter(x => x.strand === s.id); const tot = a.reduce((t, x) => t + stepsOf(x).length, 0), d = a.reduce((t, x) => t + doneCount(x), 0); return `<td><span class="dot" style="--p:${tot ? Math.round(100 * d / tot) : 0}%" title="${s.name}: ${d}/${tot}"></span></td>`; };
-  app.innerHTML = `<section class="plain"><h1>Üniteler</h1>
-    <p class="lede">Sekiz ünite, kolaydan zora. Her ünitede beş kol var: Okuma, Etüt, Eser, Eşlik, Şan. Bir üniteyi bitirince sonraki gelir; takılırsan ileri bakmakta serbestsin.</p>
+  const yol = `<p class="lede">Sıra önerilen yoldur: ders, sonra karışık çalışmalar, en sonda final. Bir finali geçince ünite tamamlanır.</p>
+    <div class="units">${UNITS.map(u => u.n === cur ? `<div class="unit here open"><a class="uh" href="#/unite/${u.n}">${unitHead(u, true)}</a><div class="uact"><a class="chip" href="#/ders/${u.n}">${db.ders[u.n] ? 'Dersi yeniden gör' : 'Ders'}</a><a class="chip" href="#/unite/${u.n}">Üniteyi aç</a></div>${pathHtml(u.n)}</div>` : `<a class="unit" href="#/unite/${u.n}">${unitHead(u)}</a>`).join('')}</div>`;
+  const kollar = `<p class="lede">Bir kolu seçip o konuda ilerleyebilirsin.</p>
+    <div class="kollar">${STRANDS.map(s => { const st = strandStat(s); return `<a class="kolc" href="#/${s.id === 'eslik' ? 'eslik' : s.id === 'san' ? 'san' : 'kol/' + s.id}"><b>${s.name}</b><small>${s.note}</small><span class="bar"><i style="width:${Math.round(100 * st.d / st.t)}%"></i></span><span class="kn2">${st.nx ? 'Sıradaki: ' + esc(st.nx.title) : 'Bitti'}</span></a>`; }).join('')}</div>
+    <h2>İlerleme haritası</h2>
     <table class="map"><thead><tr><th></th>${STRANDS.map(s => `<th>${s.name}</th>`).join('')}</tr></thead><tbody>
       ${UNITS.map(u => `<tr class="${u.n === cur ? 'here' : ''}"><th><a href="#/unite/${u.n}"><b>${u.n}</b> ${esc(u.name)}</a></th>${STRANDS.map(s => cell(u, s)).join('')}</tr>`).join('')}
-    </tbody></table>
-    <div class="units">${UNITS.map(u => { const p = unitProgress(u.n); return `<a class="unit ${u.n === cur ? 'here' : ''}" href="#/unite/${u.n}"><span class="un">${u.n}</span><span class="ub"><b>${esc(u.name)}</b><small>${u.level}${u.n === cur ? ', buradasın' : ''}</small><span class="tops">${u.topics.slice(0, 3).map(esc).join(', ')}</span><span class="bar"><i style="width:${p.pct}%"></i></span></span></a>`; }).join('')}</div>
-  </section>`;
+    </tbody></table>`;
+  app.innerHTML = `<section class="plain"><h1>Üniteler</h1>${ribbon()}
+    <div class="seg wideseg"><button data-v="yol" class="${view === 'yol' ? 'on' : ''}">Yol</button><button data-v="kol" class="${view === 'kol' ? 'on' : ''}">Kollar</button></div>
+    ${view === 'yol' ? yol : kollar}</section>`;
+  app.querySelector('.wideseg').onclick = (e) => { const b = e.target.closest('[data-v]'); if (b) { uniteler.view = b.dataset.v; uniteler(); } };
+  if (view === 'yol' && cur > 1) requestAnimationFrame(() => app.querySelector('.unit.here')?.scrollIntoView({ block: 'start' }));
 }
 function unite(n) {
   const u = UNITS[n - 1]; if (!u) return go('uniteler');
-  const here = ITEMS.filter(x => x.unit === n), nextHere = here.find(x => !isDone(x));
+  if (db.skipping) { db.skipping = null; save(); }
   app.innerHTML = `<section class="plain">${back('uniteler', 'Üniteler')}
     <h1>Ünite ${n}: ${esc(u.name)}</h1><p class="lede">${esc(u.aim)}</p>
     <div class="chips">${u.topics.map(t => `<span class="tchip">${esc(t)}</span>`).join('')}</div>
-    ${STRANDS.map(s => { const a = here.filter(x => x.strand === s.id); return a.length ? `<h2>${s.name}</h2><p class="snote">${s.note}</p><ul class="ilist">${a.map(it => row(it, it === nextHere, false)).join('')}</ul>` : ''; }).join('')}
-    ${u.pdf ? `<h2>Ek nota</h2><p>${u.pdf.map(([t, url]) => `<a href="${url}" target="_blank" rel="noopener">${esc(t)}</a>`).join(', ')} (IMSLP, ücretsiz PDF). Kitabındaki sırayla karşılaştırabilirsin.</p>` : ''}
+    <div class="uact"><a class="chip" href="#/ders/${n}">${db.ders[n] ? 'Dersi yeniden gör' : 'Ders'}</a>${!unitDone(n) ? `<button class="chip" id="skip">Bu üniteyi biliyorum</button>` : ''}</div>
+    ${pathHtml(n)}
+    ${u.pdf ? `<h2>Ek nota</h2><p>${u.pdf.map(([t, url]) => `<a href="${url}" target="_blank" rel="noopener">${esc(t)}</a>`).join(', ')} (IMSLP, ücretsiz PDF).</p>` : ''}
     <div class="navs">${n > 1 ? `<a class="txt-btn" href="#/unite/${n - 1}">Önceki ünite</a>` : '<span></span>'}${n < 8 ? `<a class="txt-btn" href="#/unite/${n + 1}">Sonraki ünite</a>` : ''}</div>
+  </section>`;
+  const sk = app.querySelector('#skip'); if (sk) sk.onclick = () => { db.skipping = n; save(); toast('Finali geçersen ünite tamamlanmış sayılır.'); go('is/' + u.final.id); };
+}
+function kol(id) {
+  const s = STRANDS.find(x => x.id === id); if (!s) return go('uniteler');
+  app.innerHTML = `<section class="plain">${back('uniteler', 'Üniteler')}<h1>${s.name}</h1><p class="lede">${s.note}</p>${strandList(id)}</section>`;
+}
+function tekrar() {
+  const due = dueList(), upcoming = ITEMS.filter(x => db.rev[x.id] && db.rev[x.id].due > today()).sort((a, b) => db.rev[a.id].due.localeCompare(db.rev[b.id].due));
+  const open = (it) => Math.max(0, stepsOf(it).length - 1);
+  app.innerHTML = `<section class="plain"><h1>Tekrar</h1>
+    <p class="lede">Bitirdiğin çalışmalar aralıklarla geri gelir: 1, 2, 4, 8, 16, 30 gün sonra. İyi geçerse süre uzar, zorlanırsan yarın yine gelir.</p>
+    ${due.length ? `<ul class="ilist">${due.map(it => `<li class="here"><a href="#/adim/${it.id}/${open(it)}/rev">${HEAD(false)}<span class="lt"><b>${esc(it.title)}</b><small>${LABEL[it.strand] || 'Final'}</small></span><span class="lm">Bugün</span></a></li>`).join('')}</ul>` : '<p>Bugün tekrar edilecek bir şey yok. Yeni çalışma bitirdikçe burası dolar.</p>'}
+    ${upcoming.length ? `<h2>Sıradakiler</h2><ul class="ilist">${upcoming.slice(0, 12).map(it => `<li><a href="#/adim/${it.id}/${open(it)}/rev">${HEAD(true)}<span class="lt"><b>${esc(it.title)}</b><small>${LABEL[it.strand] || ''}</small></span><span class="lm">${db.rev[it.id].due.slice(8)}.${db.rev[it.id].due.slice(5, 7)}</span></a></li>`).join('')}</ul>` : ''}
+  </section>`;
+}
+function repertuvar() {
+  const groups = UNITS.map(u => ({ u, a: ITEMS.filter(x => x.unit === u.n && x.strand === 'eser') })).filter(g => g.a.length);
+  const all = ITEMS.filter(x => x.strand === 'eser');
+  app.innerHTML = `<section class="plain"><h1>Repertuvar</h1>
+    <p class="lede">${all.filter(isDone).length} / ${all.length} eser öğrenildi. Bir esere dokun, bölüm bölüm çalış.</p>
+    ${groups.map(g => `<h2>${g.u.n}. ${esc(g.u.name)}</h2><ul class="ilist">${g.a.map(it => row(it, false, false)).join('')}</ul>`).join('')}
   </section>`;
 }
 // Bir öğenin çalışma planı
@@ -209,13 +311,14 @@ function isPage(id) {
   app.innerHTML = `<section class="plain">${back('unite/' + it.unit, 'Ünite ' + it.unit)}
     <h1>${esc(it.title)}</h1>${it.composer ? `<p class="comp">${esc(it.composer)}</p>` : ''}
     ${it.why ? `<p class="lede">${esc(it.why)}</p>` : ''}${chords}
+    ${it.kind === 'final' && db.skipping === it.unit ? '<p class="snote">Finali geçersen ünitenin bütün çalışmaları bir yıldızla tamamlanır.</p>' : ''}
     <a class="primary wide" href="#/adim/${id}/${nx}">${allDone ? 'Yeniden çalış' : doneCount(it) ? 'Devam et' : 'Başla'}</a>
     ${how}${body}
   </section>`;
 }
 // --- Eşlik sekmesi: ders listesi
 function eslik() {
-  app.innerHTML = `<section class="plain"><h1>Eşlik</h1>
+  app.innerHTML = `<section class="plain">${back('uniteler', 'Üniteler')}<h1>Eşlik</h1>
     <p class="lede">Akorla şarkı çalmayı adım adım öğreniyoruz. Her ders aynı sırada ilerler: akoru klavyede tanı, sol elle kökleri çal, sağ elle akorları çal, iki eli yavaş birleştir, sonra tempoda ve kalıpla çal.</p>
     <a class="primary wide" href="#/sarki">Kendi şarkımı çal</a>
     <h2>Dersler</h2>${strandList('eslik')}
@@ -226,7 +329,7 @@ const SEMI = [...Array(12).keys()];
 const KEY_LIST = (mode) => SEMI.map(pc => { const f = mode === 'minor' ? MINOR_FIFTHS_BY_PC[pc] : MAJOR_FIFTHS_BY_PC[pc]; return { f, pc, label: keyName(f, mode) + ' (' + keyLetter(f, mode) + ')' }; });
 function sarki() {
   const st = sarki.state || (sarki.state = { chart: 'C | G | Am | F', pattern: 'balad', tempo: 72, semi: 0, title: '' });
-  app.innerHTML = `<section class="plain">${back('eslik', 'Eşlik')}<h1>Kendi şarkın</h1>
+  app.innerHTML = `<section class="plain">${back('araclar', 'Araçlar')}<h1>Kendi şarkın</h1>
     <p class="lede">Akorları yaz, kalıbı seç; iki elli eşlik notası oluşsun. Ton sesine uymuyorsa kaydır.</p>
     <form class="form" id="af">
       <label class="full">Akorlar <small>Ölçüleri | ile ayır. Do, Rem gibi solfej de yazabilirsin.</small>
@@ -288,7 +391,7 @@ function san() {
   const S = db.settings;
   const st = san.state || (san.state = { ex: 'besli', style: 'akor', dir: 'up', low: '', high: '', use: 'sing' });
   const v = VOICES[S.voice];
-  app.innerHTML = `<section class="plain"><h1>Şan</h1>
+  app.innerHTML = `<section class="plain">${back('uniteler', 'Üniteler')}<h1>Şan</h1>
     <p class="lede">Şan alıştırmalarını piyanoda çalmayı ünite sırasıyla öğren. Serbest çalışmak istersen alttan kendi aralığını seç.</p>
     <h2>Dersler</h2>${strandList('san')}
     <h2>Serbest çalışma</h2>
@@ -356,7 +459,9 @@ function araclar() {
   const score = (id) => { const s = db.reading[id]; if (!s) return ''; const a = Object.values(s); const n = a.reduce((x, y) => x + y.n, 0), e = a.reduce((x, y) => x + y.e, 0); return n ? `yüzde ${Math.round(100 * (1 - e / n))}` : ''; };
   const groups = [['Fa anahtarı', ['b1', 'b2', 'b3', 'b4', 'b5']], ['Sol anahtarı', ['t1', 't2']], ['İki porte ve aralık', ['g1', 'i1']]];
   app.innerHTML = `<section class="plain"><h1>Araçlar</h1>
+    ${ribbon()}
     <p class="lede">Ünitelerin dışında serbest çalışmak için.</p>
+    <div class="row-btn"><a class="chip" href="#/sarki">Kendi şarkımı çal</a><a class="chip" href="#/san">Serbest şan</a></div>
     <h2>Nota okuma</h2><p>Notayı gör, tuşa bas. Yanlış yaptığın notalar daha sık gelir.</p>
     ${groups.map(([t, ids]) => `<h3>${t}</h3><ul class="levels">${ids.map(id => `<li><a href="#/oku/${id}"><span>${esc(READ_LEVELS[id].title)}</span><small>${score(id)}</small></a></li>`).join('')}</ul>`).join('')}
     <h2>Deşifre</h2><p>Her seferinde yeni, kısa bir parça üretilir.</p>
@@ -384,7 +489,18 @@ function araclar() {
 }
 function applyTheme() { const t = db.settings.theme; if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.dataset.theme = t; }
 applyTheme();
+function placement() {
+  if (db.place || Object.keys(db.steps).length) return;
+  const el = document.createElement('div'); el.className = 'sheet place';
+  const opts = [[1, 'Fa anahtarı henüz oturmadı', 'Sol eli notadan okumakta zorlanıyorum. Önerilen başlangıç.'], [3, 'Fa anahtarını yavaş okuyorum', 'İki elle kısa parçalar çalıyorum, elleri ayırmak zor geliyor.'], [5, 'İki anahtarı birlikte okuyorum', 'Küçük parçaları ezbere dayanmadan çalabiliyorum.']];
+  el.innerHTML = `<div class="sheet-card" role="dialog" aria-label="Başlangıç"><h2>Hoş geldin. Nereden başlayalım?</h2>
+    ${opts.map(([n, b, t]) => `<button class="q-opt" data-p="${n}"><b>${b}</b><br><small>${t}</small></button>`).join('')}
+    <p class="muted">Hiçbir ünite kilitli değil. Daha sonra istediğin üniteye geçebilirsin.</p></div>`;
+  document.body.append(el);
+  el.onclick = (e) => { const b = e.target.closest('[data-p]'); if (!b) return; db.place = +b.dataset.p; save(); el.remove(); route(); };
+}
 route();
+placement();
 autoConnectMIDI();
 (window.requestIdleCallback || setTimeout)(() => preloadPiano());
 if ('serviceWorker' in navigator && isSecureContext) {

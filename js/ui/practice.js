@@ -55,6 +55,7 @@ export function mountPractice(root, cfg, { onExit }) {
       </div>
       <div class="dock-row minor">
         ${cfg.onDone ? `<button class="chip done" data-a="finish">${esc(cfg.doneLabel || 'Adımı bitir')}</button>` : ''}
+        ${cfg.onHard ? `<button class="chip" data-a="hard">${esc(cfg.hardLabel || 'Zorlandım')}</button>` : ''}
         ${Inputs.midi.supported ? '<button class="chip midi" data-a="midi"></button>' : ''}
         <button class="chip" data-a="loop">Döngü</button>
         <button class="chip" data-a="hint"></button>
@@ -141,8 +142,9 @@ export function mountPractice(root, cfg, { onExit }) {
       const r = pl.lastFollow;
       status.innerHTML = `Doğru nota yüzde ${r.pct}${r.bpm ? ', tempo ' + r.bpm : ''}${r.wrong ? ', ' + r.wrong + ' yanlış' : ''}${r.missed ? ', ' + r.missed + ' atlanan' : ''}. ` + (r.weak.length ? `<button class="link" data-a="weak" data-b="${r.weak[0]}">Ölçü ${disp(r.weak[0])} üzerinde çalış</button>` : 'Yeniden çalarsan baştan izlerim.');
       if (r.pct >= 95 && !r.wrong && !r.missed) addClean();
+      showResult({ pct: r.pct, tempoOK: r.bpm != null && r.bpm >= pl.tempo * 0.9, line: `Doğru nota yüzde ${r.pct}${r.bpm ? ', tempon ' + r.bpm : ''}${r.wrong ? ', ' + r.wrong + ' yanlış' : ''}${r.missed ? ', ' + r.missed + ' atlanan' : ''}.`, weak: r.weak.length ? r.weak[0] : null });
     }
-    if (st === 'timing') { const r = pl.lastTiming; status.textContent = `Zamanında yüzde ${r.pct}. Ortalama ${Math.abs(r.avg)} ms ${r.avg > 0 ? 'geç' : 'erken'}${r.wrong ? ', ' + r.wrong + ' yanlış' : ''}${r.missed ? ', ' + r.missed + ' çalınmadı' : ''}.`; if (r.pct >= 95 && !r.wrong) addClean(); }
+    if (st === 'timing') { const r = pl.lastTiming; status.textContent = `Zamanında yüzde ${r.pct}. Ortalama ${Math.abs(r.avg)} ms ${r.avg > 0 ? 'geç' : 'erken'}${r.wrong ? ', ' + r.wrong + ' yanlış' : ''}${r.missed ? ', ' + r.missed + ' çalınmadı' : ''}.`; if (r.pct >= 95 && !r.wrong) addClean(); showResult({ pct: r.pct, tempoOK: pl.tempo >= (cfg.tempo || 0), line: `Zamanında yüzde ${r.pct}, ortalama ${Math.abs(r.avg)} ms ${r.avg > 0 ? 'geç' : 'erken'}.` }); }
     if (st === 'stopped') { setPlayIcon(false); status.textContent = ''; }
     if (st === 'tempo') updateUI();
     if (st === 'progress' || st === 'waiting') {
@@ -156,14 +158,40 @@ export function mountPractice(root, cfg, { onExit }) {
         const pct = pl.stats.total ? Math.round(100 * pl.stats.first / pl.stats.total) : 0;
         status.textContent = `İlk denemede doğru: yüzde ${pct}`;
         if (pct >= 95) { addClean(); }
+        showResult({ pct, tempoOK: false, line: `İlk denemede doğru: yüzde ${pct}.` });
       } else status.textContent = '';
     }
+  }
+  const starsOf = (pct, tempoOK, hinted) => pct < 70 ? 0 : (pct >= 98 && tempoOK && !hinted) ? 3 : pct >= 90 ? 2 : 1;
+  function showResult({ pct, tempoOK, line, weak }) {
+    if (!cfg.onResult || pl.loop) return;
+    const hinted = pl.hint === 'always', stars = starsOf(pct, tempoOK, hinted);
+    cfg.onResult(stars);
+    document.querySelector('.toast')?.classList.remove('show');
+    const sheet = $('.sheet'); sheet.hidden = false;
+    const cap = pct >= 98 && hinted ? 'Üç yıldız için tuş yardımını kapat.' : pct >= 98 && !tempoOK ? 'Üç yıldız için Takip ya da Birlikte kipinde adım temposunda çal.' : stars === 0 ? 'Tempoyu düşür, zor yeri döngüye al, sonra yeniden dene.' : '';
+    sheet.innerHTML = `<div class="sheet-card result" role="dialog" aria-label="Sonuç">
+      <div class="stars big">${'★'.repeat(stars)}<i>${'★'.repeat(3 - stars)}</i></div>
+      <h2>${stars ? (stars === 3 ? 'Kusursuz' : 'Adım tamam') : 'Bir tur daha'}</h2>
+      <p>${esc(line)}</p>${cap ? `<p class="muted">${esc(cap)}</p>` : ''}
+      ${stars && cfg.onNext ? `<button class="primary" data-r="next">${esc(cfg.nextLabel || 'Sonraki adım')}</button>` : ''}
+      <button class="chip wide" data-r="again">Tekrar çal</button>
+      ${weak != null ? `<button class="chip wide" data-r="weak">Ölçü ${disp(weak)} üzerinde çalış</button>` : ''}
+    </div>`;
+    sheet.onclick = (e) => {
+      if (e.target === sheet) { sheet.hidden = true; return; }
+      const b = e.target.closest('[data-r]'); if (!b) return;
+      sheet.hidden = true;
+      if (b.dataset.r === 'next') { cleanup(); cfg.onNext(); }
+      if (b.dataset.r === 'again' && pl.mode !== 'follow') pl.play();
+      if (b.dataset.r === 'weak') { pl.setLoop(weak, Math.min(score.measures.length - 1, weak + 1)); updateUI(); status.textContent = `Ölçü ${disp(weak)} döngüde. Yavaş çal, sonra hızlan.`; }
+    };
   }
   function addClean() {
     if (lessonId) {
       db.clean[lessonId] = (db.clean[lessonId] || 0) + 1;
       if (db.clean[lessonId] >= 3) {
-        db.clean[lessonId] = 0; pl.tempo += 4; db.tempo[lessonId] = pl.tempo;
+        db.clean[lessonId] = 0; pl.tempo += 4; db.tempo[lessonId] = pl.tempo; cfg.onResult?.(2);
         toast(`Üç temiz tekrar. Tempo ${Math.round(pl.tempo)} oldu.`);
       } else toast('Temiz tekrar kaydedildi.');
       save();
@@ -209,6 +237,7 @@ export function mountPractice(root, cfg, { onExit }) {
         break;
       }
       case 'finish': cleanup(); cfg.onDone(); break;
+      case 'hard': cleanup(); cfg.onHard(); break;
     }
   });
   async function doMidi() {
@@ -275,7 +304,7 @@ export function mountPractice(root, cfg, { onExit }) {
   setVolume(S.volume);
   pl.previewStart();
   updateUI(); updateMidi(); showLoad();
-  if (cfg.startMode) { pl.mode = cfg.startMode; updateUI(); }
+  if (cfg.startMode) { pl.mode = cfg.startMode; updateUI(); if (pl.mode === 'follow') pl.startFollow(); }
   function cleanup() { clearTimeout(rT); offMidi(); removeEventListener('piano-progress', showLoad); pl.destroy(); kb.destroy(); ro.disconnect(); offInput(); clearInterval(timeLog); wake?.release?.(); }
   return { cleanup, player: pl };
 }

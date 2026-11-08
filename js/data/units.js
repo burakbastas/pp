@@ -137,4 +137,32 @@ for (const u of UNITS) for (const s of STRANDS) {
     ITEMS.push(it);
   });
 }
+// Her ünitenin sonunda final: okuma, akor ve çalma sınavı
+for (const u of UNITS) {
+  const here = ITEMS.filter(x => x.unit === u.n);
+  const reads = here.filter(x => x.kind === 'read');
+  const level = reads.length ? reads[reads.length - 1].level : 'g1';
+  const chords = [...new Set(here.filter(x => x.kind === 'ak').flatMap(x => x.chords))];
+  const pieces = here.filter(x => x.kind === 'piece' && x.strand === 'eser');
+  const perf = pieces[pieces.length - 1] || pieces[0];
+  const f = { kind: 'final', id: `u${u.n}-final`, unit: u.n, strand: 'final', title: `Ünite ${u.n} finali`, why: 'Okuma, akor ve çalma. Geçtiğinde ünite tamamlanır.', level, chords, perf };
+  ITEMS.push(f);
+  u.final = f;
+}
+// Yol sırası: kollar birer birer sırayla gelir, en sonda final
+export function pathOf(n) {
+  const here = ITEMS.filter(x => x.unit === n && x.strand !== 'final');
+  const lists = STRANDS.map(s => here.filter(x => x.strand === s.id));
+  const out = [];
+  for (let i = 0; lists.some(l => l[i]); i++) lists.forEach(l => { if (l[i]) out.push(l[i]); });
+  return out;
+}
+export const TITLES = [
+  { at: 0, name: 'Mübtedî', mean: 'Yeni başlayan' },
+  { at: 1, name: 'Heveskâr', mean: 'Müziğe gönül vermiş' },
+  { at: 3, name: 'Mutavassıt', mean: 'Orta seviyeye ulaşmış' },
+  { at: 5, name: 'Mûsikişinas', mean: 'Müzikten anlayan' },
+  { at: 7, name: 'Müntehî', mean: 'İleri seviyeye ulaşmış' },
+  { at: 8, name: 'Üstat', mean: 'Bütün üniteleri bitirmiş' },
+];
 export const itemById = (id) => ITEMS.find(x => x.id === id);

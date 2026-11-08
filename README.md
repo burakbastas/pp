@@ -24,11 +24,23 @@ Bilgisayarda denemek için: klasörde `python3 -m http.server` çalıştır, `ht
 
 ## İçindekiler
 
-- **Bugün:** beş kolun (Okuma, Etüt, Eser, Eşlik, Şan) her birinden sıradaki adım. 15, 30 ya da 45 dakika.
-- **Üniteler:** sekiz ünitelik ilerleme haritası. Her ünitede konular, okuma, etütler, seviyeye uygun eserler, eşlik ve şan var. Her eser bölümlere ve ellere ayrılır.
-- **Eşlik:** her ders aynı sırayla ilerler: akoru tanı, sol el, sağ el, iki el yavaş, tempoda. Kendi şarkın için akorları yaz (`Am F | C G`, `Lam Fa`), kalıp seç, tonu kaydır.
-- **Şan:** alıştırmaları piyanoda çalmayı ders ders öğren ya da kendi aralığında serbest çalış.
-- **Araçlar:** nota okuma antrenörü, deşifre üretici, akor bulucu, ayarlar.
+- **Bugün:** beş kolun (Okuma, Etüt, Eser, Eşlik, Şan) her birinden sıradaki adım. 15, 30 ya da 45 dakika. Ünite dersi, hazır final ve günün tekrarları burada görünür.
+- **Üniteler:** sekiz ünite, iki görünüm. **Yol** önerilen karışık sırayı gösterir: ders, çalışmalar, final. **Kollar** tek konuda ilerlemek içindir (Okuma, Etüt, Eser, Eşlik, Şan). Hiçbir ünite kilitli değildir; bildiğin üniteyi finalle geçebilirsin.
+- **Tekrar:** biten çalışmalar 1, 2, 4, 8, 16 ve 30 gün aralıklarla geri gelir. İyi geçerse süre uzar, zorlanırsan yarın yine gelir.
+- **Repertuvar:** bütün eserler, ünite ünite.
+- **Araçlar:** nota okuma antrenörü, deşifre üretici, akor bulucu, kendi şarkın, serbest şan, ayarlar.
+
+Eşlik dersleri aynı sırayla ilerler: akoru tanı, sol el, sağ el, iki el yavaş, tempoda. Kendi şarkın için akorları yaz (`Am F | C G`, `Lam Fa`), kalıp seç, tonu kaydır.
+
+## Yıldızlar
+
+| Yıldız | Takip ve Bekle | Okuma | Akor |
+| --- | --- | --- | --- |
+| 1 | yüzde 70 ve üstü, ya da Bitti düğmesi | yüzde 80 | yüzde 60 |
+| 2 | yüzde 90 ve üstü, ya da üç temiz tekrar | yüzde 90 ve nota başına en çok 2,5 sn | yüzde 80 |
+| 3 | yüzde 98 ve üstü, adım temposunda, tuş yardımı kapalı | yüzde 98 ve en çok 1,5 sn | yüzde 100 |
+
+Ünite finali okuma, akor tanıma ve Takip kipinde çalmadan oluşur. Finali geçmek üniteyi tamamlar, unvan bitirilen ünite sayısıyla yükselir.
 
 ## Yeni alıştırma eklemek
 
@@ -42,7 +54,7 @@ add('benim1', { title: 'Benim alıştırmam', key: 0, time: [4, 4], tempo: 70,
 
 Biçim: `perde:süre_parmak`. Süreler `1 2 4 8 16`, noktalı `4.`. `!` stakato, `~` bağ, `(` `)` legato yayı, `<c3 e3 g3>:2` akor, `r:4` sus, `|` ölçü çizgisi, `//` aynı porteye ikinci ses. Süre yazılmazsa bir önceki süre geçerlidir. Bemol `bb3`, diyez `f#3`.
 
-Sonra `js/data/units.js` içinde ilgili üniteye `ex('benim1', 'Neden bu alıştırma')` satırı ekle.
+Sonra `js/data/units.js` içinde ilgili üniteye `ex('benim1', 'Neden bu alıştırma')` satırı ekle. Ünite dersleri `js/data/lessons.js` içindedir.
 
 ## Yapı
 
