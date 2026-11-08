@@ -1,6 +1,6 @@
 const KEY = 'iki-el-v1';
 const DEF = {
-  done: {}, clean: {}, tempo: {}, reading: {}, songs: [], log: {}, settings: {
+  done: {}, steps: {}, seen: {}, clean: {}, tempo: {}, reading: {}, songs: [], log: {}, settings: {
     minutes: 30, voice: 'tenor', hint: 'always', names: false, fingers: true, metro: true, countIn: true, zoom: 1, midiSound: false, volume: 0.85, theme: 'auto', book: 56,
   },
 };

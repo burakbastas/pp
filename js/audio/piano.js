@@ -42,11 +42,17 @@ function decode(bytes) {
   return new Promise((ok, no) => decoder.decodeAudioData(bytes, ok, no));
 }
 function measure(buf) {
-  const d = buf.getChannelData(0); let peak = 0;
+  const d = buf.getChannelData(0), sr = buf.sampleRate, win = Math.max(1, Math.round(sr * 0.002));
+  let peak = 0;
   for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > peak) peak = a; }
-  const limit = peak * 0.02; let on = 0;
-  while (on < d.length && Math.abs(d[on]) < limit) on++;
-  return { buf, peak, offset: Math.max(0, on - 44) / buf.sampleRate, norm: Math.pow(REF_PEAK / Math.max(peak, 0.005), 0.6) };
+  // Bas notalarının atağı tiz notalardan yavaştır. Her notayı tepe noktasının yarısına
+  // aynı anda ulaşacak şekilde hizalıyoruz; böylece sol ve sağ el birlikte duyulur.
+  let on = 0;
+  for (let i = 0; i < Math.min(d.length, sr * 0.3); i += win) {
+    let m = 0; for (let j = i; j < i + win && j < d.length; j++) m = Math.max(m, Math.abs(d[j]));
+    if (m >= peak * 0.5) { on = i; break; }
+  }
+  return { buf, peak, offset: Math.max(0, on / sr - 0.004), norm: Math.pow(REF_PEAK / Math.max(peak, 0.005), 0.6) };
 }
 function loadSample(m) {
   if (m < FIRST || m > LAST || samples.has(m)) return Promise.resolve();

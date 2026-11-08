@@ -9,7 +9,7 @@ import { Inputs, enableComputerKeys } from '../audio/input.js';
 import { db, save, logMinutes } from '../store.js';
 
 const ROUND = 20;
-export function mountReading(root, levelId, { onExit, lessonId }) {
+export function mountReading(root, levelId, { onExit, onPass }) {
   const L = READ_LEVELS[levelId];
   const stats = db.reading[levelId] || (db.reading[levelId] = {});
   root.innerHTML = `<section class="reader">
@@ -109,7 +109,7 @@ export function mountReading(root, levelId, { onExit, lessonId }) {
     const pct = Math.round(100 * right / ROUND), avgN = totalMs / ROUND / 1000, avg = avgN.toFixed(1).replace('.', ',');
     const weak = Object.entries(roundErr).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([m]) => { const p = pool.find(x => x.midi === +m); return SOLFEGE[p.step] + p.oct; });
     const pass = pct >= 90 && avgN <= 2.5;
-    if (pass && lessonId) { db.done[lessonId] = true; save(); }
+    if (pass) onPass?.();
     $('.r-stage').innerHTML = `<div class="r-end"><h2>Yüzde ${pct} doğru, nota başına ${avg} sn</h2>
       <p>${pass ? 'Hedefi tutturdun, bu düzey kaydedildi.' : 'Hedef yüzde 90 ve 2,5 saniye. Bir tur daha çalış; zayıf notalar daha sık gelir.'}</p>
       ${weak.length ? `<p>En çok karışanlar: ${weak.join(', ')}</p>` : ''}
@@ -119,7 +119,7 @@ export function mountReading(root, levelId, { onExit, lessonId }) {
   $('.reader').onclick = (e) => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.a === 'back') { cleanup(); onExit(); }
-    if (b.dataset.a === 'again') { cleanup(); mountReading(root, levelId, { onExit, lessonId }); }
+    if (b.dataset.a === 'again') { cleanup(); mountReading(root, levelId, { onExit, onPass }); }
     if (b.dataset.ans) { answer = b.dataset.ans; root.querySelectorAll('[data-ans]').forEach(x => x.classList.toggle('on', x === b)); $('.r-names').hidden = answer !== 'name'; }
     if (b.dataset.n != null) tryName(+b.dataset.n);
   };

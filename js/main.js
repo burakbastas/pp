@@ -1,14 +1,14 @@
-import { TRACKS, STAGES, LESSONS, MINUTES, byId, nextFor, READ_LEVELS } from './data/curriculum.js';
+import { STRANDS, UNITS, ITEMS, itemById } from './data/units.js';
+import { MINUTES, READ_LEVELS } from './data/curriculum.js';
 import { EXERCISE, pieceDef, PIECES, preludeBlocks } from './data/exercises.js';
 import { chartToScore, PATTERNS, PROGRESSIONS, romanChart, parseChart, transposeChart, bestSignature, flatTarget } from './gen/accomp.js';
 import { vocalScore, VOICES, EXERCISES, STYLES } from './gen/vocal.js';
 import { sightScore } from './gen/sight.js';
 import { mountPractice } from './ui/practice.js';
 import { mountReading } from './ui/reading.js';
+import { mountChordDrill, miniKeys, chordNotes } from './ui/chords.js';
 import { Keyboard } from './ui/keyboard.js';
-import { parseChord, chordTone, keyName, keyLetter, MAJOR_FIFTHS_BY_PC, MINOR_FIFTHS_BY_PC, STEP_SEMI, solfegeName, pitchStr, parsePitch } from './notation/theory.js';
-import { parseScore } from './notation/parse.js';
-import { Engraved } from './notation/render.js';
+import { parseChord, keyName, keyLetter, MAJOR_FIFTHS_BY_PC, MINOR_FIFTHS_BY_PC, solfegeName, parsePitch } from './notation/theory.js';
 import { db, save, streak, today, exportData, importData, resetAll } from './store.js';
 import { esc, toast } from './ui/dom.js';
 import { ensureAudio, playNote, preloadPiano } from './audio/piano.js';
@@ -17,135 +17,216 @@ import { GLYPHS } from './notation/glyphs.js';
 
 const app = document.getElementById('app'), tabs = document.getElementById('tabs');
 let active = null, stash = null;
+const LABEL = Object.fromEntries(STRANDS.map(s => [s.id, s.name]));
+const back = (to, label) => `<a class="crumb" href="#/${to}">${esc(label)}</a>`;
 
 const F_CLEF = (() => { const g = GLYPHS.fClef; const [x0, y0, x1, y1] = g.b; return `<svg class="big-clef" viewBox="${x0} ${-y1} ${x1 - x0} ${y1 - y0}" aria-hidden="true"><path transform="scale(1,-1)" d="${g.d}"/></svg>`; })();
-const HEAD = (filled, cls = '') => `<svg class="head ${filled ? 'filled' : ''} ${cls}" viewBox="0 0 26 20" aria-hidden="true"><path fill-rule="evenodd" d="M2.2 13.6C.6 10 4.4 4.6 10.8 2.3 17.2 0 23 1.7 24 6c1 3.7-2.9 9-9.3 11.4C8.3 19.700 3.800 17.400 2.200 13.600Z${filled ? '' : 'M6 13c.8 1.800 4.300 1.900 8 .3 4-1.700 6.700-4.700 6-6.700-.7-1.900-4.500-2-8.300-.3C7.700 8 5 11.100 6 13Z'}"/></svg>`;
+const HEAD = (filled, cls = '') => `<svg class="head ${filled ? 'filled' : ''} ${cls}" viewBox="0 0 26 20" aria-hidden="true"><path fill-rule="evenodd" d="M2.2 13.6C.6 10 4.4 4.6 10.8 2.3 17.2 0 23 1.7 24 6c1 3.7-2.9 9-9.3 11.4C8.3 19.7 3.8 17.4 2.2 13.6Z${filled ? '' : 'M6 13c.8 1.8 4.3 1.9 8 .3 4-1.7 6.7-4.7 6-6.7-.7-1.9-4.5-2-8.3-.3C7.7 8 5 11.1 6 13Z'}"/></svg>`;
+
+// --- Adımlar: her öğe sıralı adımlara ayrılır
+const HAND_HOW = {
+  lh: ['Önce nota adlarını söyle, sonra çal.', 'Gözün klavyede değil portede kalsın.'],
+  rh: ['Parmak numaralarını izle.', 'Cümle sonlarında nefes alır gibi bırak.'],
+  both: ['Çok yavaş başla. Takıldığın ölçüyü döngüye al.', 'Üç temiz tekrar yapınca tempo kendiliğinden artar.'],
+};
+const stepsCache = new Map();
+export function stepsOf(it) {
+  if (stepsCache.has(it.id)) return stepsCache.get(it.id);
+  let out = [];
+  if (it.kind === 'read') out = [{ t: 'Nota bulma turu', read: it.level }];
+  else if (it.kind === 'sight') out = [{ t: 'Yeni parça deşifre et', sight: true }];
+  else if (it.kind === 'studio') out = [{ t: 'Şarkını yaz ve çal', studio: true }];
+  else if (it.kind === 'prelude') out = [{ t: 'Akorları blok çal', prelude: true, hands: 'both', tempo: 54 }];
+  else if (it.kind === 'ex') {
+    const d = EXERCISE[it.ex], tempo = it.tempo || d.tempo;
+    if (d.rh && d.lh) out = [{ t: 'Sol el', hands: 'lh', tempo }, { t: 'Sağ el', hands: 'rh', tempo }, { t: 'İki el', hands: 'both', tempo: Math.round(tempo * 0.9) }];
+    else { const h = d.rh ? 'rh' : 'lh'; out = [{ t: 'Söyleyerek oku', hands: h, tempo, hint: 'Nota adlarını söyleyerek çal.' }, { t: 'Klavyeye bakmadan', hands: h, tempo, noHint: true, hint: 'Tuş yardımı kapalı. Gözün portede kalsın.' }]; }
+    if (it.how) out.forEach(s => { s.how = it.how; });
+  } else if (it.kind === 'piece') {
+    const p = PIECES[it.piece], from = it.from || 0, n = pieceDef(it.piece, {}).rh.length, to = it.to ?? n;
+    const span = to - from, chunk = span >= 64 ? 16 : span <= 16 ? (span <= 8 ? span : 8) : 8;
+    const slow = Math.round(p.tempo * 0.55), mid = Math.round(p.tempo * 0.65);
+    for (let a = from; a < to; a += chunk) {
+      const b = Math.min(a + chunk, to), sect = `Ölçü ${a + 1}–${b}`;
+      out.push({ t: 'Sol el', group: sect, hands: 'lh', tempo: slow, from: a, to: b });
+      out.push({ t: 'Sağ el', group: sect, hands: 'rh', tempo: slow, from: a, to: b });
+      out.push({ t: 'İki el', group: sect, hands: 'both', tempo: slow, from: a, to: b });
+    }
+    if (span > chunk) out.push({ t: 'Baştan sona', hands: 'both', tempo: mid, from, to });
+  } else if (it.kind === 'ak') out = it.steps;
+  else if (it.kind === 'voc') {
+    const k = Math.min(2, it.keys);
+    out = [{ t: 'Sağ el: ezgi', hands: 'rh', style: 'bas', keys: k, hint: 'Ezgiyi tek başına çal. Bu notaları sen söyleyeceksin.' }, { t: 'Sol el: akor', hands: 'lh', style: 'akor', keys: k, hint: 'Sol el her ölçüde tonik akoru tutar.' }, { t: 'İki el', hands: 'both', style: 'akor', keys: k, hint: 'Sağ el ezgi, sol el akor. Stakato varsa sağ el kısa, sol el uzun.' }, { t: 'Çalarak söyle', hands: 'both', style: 'akor', keys: it.keys, hint: 'Hem çal hem söyle. Zorlanırsan önce Dinle ile söyle.' }];
+  }
+  stepsCache.set(it.id, out); return out;
+}
+const stepState = (id) => db.steps[id] || (db.steps[id] = {});
+const doneCount = (it) => stepsOf(it).filter((_, i) => db.steps[it.id]?.[i]).length;
+const isDone = (it) => doneCount(it) === stepsOf(it).length;
+const nextIdx = (it) => { const s = stepsOf(it); for (let i = 0; i < s.length; i++) if (!db.steps[it.id]?.[i]) return i; return 0; };
+function markStep(it, i) { stepState(it.id)[i] = true; save(); }
+const unitItems = (n) => ITEMS.filter(x => x.unit === n);
+const unitProgress = (n) => { const a = unitItems(n); const tot = a.reduce((s, x) => s + stepsOf(x).length, 0), d = a.reduce((s, x) => s + doneCount(x), 0); return { tot, d, pct: tot ? Math.round(100 * d / tot) : 0 }; };
+const curUnit = () => (UNITS.find(u => unitItems(u.n).some(x => !isDone(x))) || UNITS[UNITS.length - 1]).n;
+
+export function stepConfig(it, i) {
+  const s = stepsOf(it)[i], S = db.settings;
+  const common = { hands: s.hands, title: it.title, sub: `${s.group ? s.group + ', ' : ''}${s.t}`, goal: s.hint || it.why, how: s.how || (s.hands ? HAND_HOW[s.hands] : []), lessonId: `${it.id}:${i}`, noHint: s.noHint };
+  if (it.kind === 'ex') return { ...common, def: EXERCISE[it.ex], tempo: s.tempo };
+  if (it.kind === 'piece') {
+    const def = pieceDef(it.piece, { from: s.from, to: s.to, keepRepeats: false });
+    return { ...common, def, tempo: s.tempo, src: `${PIECES[it.piece].composer}. ${PIECES[it.piece].src}`, firstBar: s.from, showBreak: true };
+  }
+  if (it.kind === 'prelude') return { ...common, def: preludeBlocks(), tempo: s.tempo };
+  if (it.kind === 'ak') {
+    const sig = bestSignature(it.chart);
+    return { ...common, def: chartToScore({ chart: it.chart, pattern: s.pattern, tempo: s.tempo, key: sig.fifths, title: PATTERNS[s.pattern].name, repeat: 2 }), tempo: s.tempo, note: PATTERNS[s.pattern].hint };
+  }
+  if (it.kind === 'voc') {
+    const def = vocalScore({ ex: it.ex, voice: S.voice, style: s.style, maxKeys: s.keys });
+    return { ...common, def, tempo: def.tempo, how: [EXERCISES[it.ex].why], note: def.octaveUp ? 'Nota bir oktav yukarıda yazıldı; erkek sesi bir oktav aşağıdan söyler.' : '' };
+  }
+  if (it.kind === 'sight') {
+    const def = sightScore({ level: it.level, hands: it.hands });
+    return { ...common, hands: it.hands, def, startMode: 'wait', goal: it.why, how: ['Önce 10 saniye bak.', 'Durmadan çal.'] };
+  }
+}
 
 function route() {
   active?.cleanup?.(); active = null;
   const hash = location.hash.slice(2) || 'bugun';
-  const [page, arg] = hash.split('/');
-  tabs.hidden = ['ders', 'calis', 'oku'].includes(page);
+  const [page, arg, arg2] = hash.split('/');
+  tabs.hidden = ['adim', 'calis', 'oku'].includes(page);
   document.body.classList.toggle('immersive', tabs.hidden);
-  tabs.querySelectorAll('a').forEach(a => a.classList.toggle('on', a.dataset.p === page));
+  const tabOf = { unite: 'uniteler', is: 'uniteler', sarki: 'eslik', ayar: 'araclar' }[page] || page;
+  tabs.querySelectorAll('a').forEach(a => a.classList.toggle('on', a.dataset.p === tabOf));
   window.scrollTo(0, 0);
-  ({ bugun, yol, okuma, eslik, san, ayar, ders: () => openLesson(arg), calis: openStash, oku: () => openRead(arg) }[page] || bugun)();
+  ({ bugun, uniteler, unite: () => unite(+arg), is: () => isPage(arg), adim: () => adim(arg, +arg2), eslik, sarki, san, araclar, ayar, calis: openStash, oku: () => openRead(arg) }[page] || bugun)();
 }
 addEventListener('hashchange', route);
-
 const go = (h) => { location.hash = '#/' + h; };
-function launch(cfg, back) { stash = { ...cfg, back }; if (location.hash === '#/calis') route(); else go('calis'); }
-function openStash() {
-  if (!stash) return go('bugun');
-  const back = stash.back || 'bugun';
-  active = mountPractice(app, stash, { onExit: () => go(back) });
-}
-function openRead(id) { active = mountReading(app, id, { onExit: () => go('okuma') }); }
+function launch(cfg, back2) { stash = { ...cfg, back: back2 }; if (location.hash === '#/calis') route(); else go('calis'); }
+function openStash() { if (!stash) return go('bugun'); const b = stash.back || 'bugun'; active = mountPractice(app, stash, { onExit: () => go(b) }); }
+function openRead(id) { active = mountReading(app, id, { onExit: () => go('araclar') }); }
 
-// Ders açma
-export function lessonDef(l) {
-  const S = db.settings;
-  switch (l.kind) {
-    case 'ex': return { def: EXERCISE[l.ex], hands: l.hands, tempo: l.tempo || EXERCISE[l.ex].tempo };
-    case 'piece': {
-      const def = pieceDef(l.piece, { from: l.from, to: l.to, keepRepeats: true });
-      return { def, hands: l.hands, tempo: l.tempo, src: `${PIECES[l.piece].composer}. Kaynak: ${PIECES[l.piece].src}`, firstBar: l.from || 0, showBreak: true };
-    }
-    case 'prelude': return { def: preludeBlocks(), hands: 'both', tempo: l.tempo };
-    case 'accomp': {
-      const sig = bestSignature(l.chart);
-      return { def: chartToScore({ chart: l.chart, pattern: l.pattern, tempo: l.tempo, key: sig.fifths, title: PATTERNS[l.pattern].name, repeat: 2 }), hands: 'both', tempo: l.tempo };
-    }
-    case 'vocal': {
-      const v = VOICES[S.voice];
-      const def = vocalScore({ ex: l.ex, voice: S.voice, style: l.style, maxKeys: l.maxKeys, tempo: l.tempo });
-      return { def, hands: 'both', tempo: l.tempo || def.tempo, note: def.octaveUp ? 'Nota bir oktav yukarıda yazıldı; erkek sesi bir oktav aşağıdan söyler.' : '' };
-    }
-    case 'sight': return { def: sightScore({ level: l.level, hands: l.hands }), hands: l.hands === 'both' ? 'both' : l.hands, tempo: null, startMode: 'wait' };
-  }
+// Bir adımı çalıştır
+function adim(id, i) {
+  const it = itemById(id); if (!it) return go('uniteler');
+  const steps = stepsOf(it), s = steps[i]; if (!s) return go('is/' + id);
+  const exit = () => go(steps.length > 1 ? 'is/' + id : 'unite/' + it.unit);
+  const after = () => {
+    markStep(it, i);
+    const nx = steps.findIndex((_, k) => !db.steps[it.id]?.[k]);
+    if (nx >= 0) go(`adim/${id}/${nx}`);
+    else { toast('Tamamlandı.'); go('unite/' + it.unit); }
+  };
+  if (s.read) { active = mountReading(app, s.read, { onExit: () => go('unite/' + it.unit), onPass: () => markStep(it, i) }); return; }
+  if (s.quiz) { active = mountChordDrill(app, { chords: s.quiz, title: it.title, onExit: exit, onDone: (nav) => { if (nav) after(); else markStep(it, i); } }); return; }
+  if (s.studio) { markStep(it, i); return go('sarki'); }
+  active = mountPractice(app, { ...stepConfig(it, i), onDone: after, doneLabel: i < steps.length - 1 ? 'Bitti, sonraki adım' : 'Bitti' }, { onExit: exit });
 }
-function openLesson(id) {
-  const l = byId(id);
-  if (!l) return go('yol');
-  if (l.kind === 'read') { active = mountReading(app, l.level, { onExit: () => go('bugun'), lessonId: l.id }); return; }
-  if (l.kind === 'studio') { db.done[l.id] = true; save(); return go('eslik'); }
-  const d = lessonDef(l);
-  active = mountPractice(app, { ...d, title: l.title, goal: l.goal, how: l.how, lessonId: l.id }, { onExit: () => go('bugun') });
+function strandList(strand) {
+  const cur = ITEMS.find(x => x.strand === strand && !isDone(x));
+  return `<ul class="ilist">${ITEMS.filter(x => x.strand === strand).map(it => row(it, cur === it, true)).join('')}</ul>`;
+}
+function row(it, here, showUnit) {
+  const n = stepsOf(it).length, d = doneCount(it), direct = n === 1;
+  return `<li class="${d === n ? 'd' : ''} ${here ? 'here' : ''}"><a href="#/${direct ? `adim/${it.id}/0` : 'is/' + it.id}">${HEAD(d === n)}<span class="lt"><b>${esc(it.title)}</b><small>${esc(it.composer || it.why || '')}</small></span><span class="lm">${showUnit ? `Ünite ${it.unit}` : d ? `${d}/${n}` : ''}</span></a></li>`;
 }
 
-// --- Bugün: beş çizgili porte
+// --- Bugün
 function bugun() {
-  const S = db.settings;
-  const mins = MINUTES[S.minutes];
-  const plan = TRACKS.map(t => ({ t, l: nextFor(t.id, db.done), m: mins[t.id] }));
-  const first = plan.find(p => p.l);
-  const doneCount = Object.keys(db.done).length;
+  const S = db.settings, mins = MINUTES[S.minutes], un = curUnit(), U = UNITS[un - 1], P = unitProgress(un);
+  const plan = STRANDS.map(s => {
+    const it = ITEMS.find(x => x.strand === s.id && x.unit >= un && !isDone(x)) || ITEMS.find(x => x.strand === s.id && !isDone(x));
+    return { s, it, m: mins[{ okuma: 'okuma', etut: 'teknik', eser: 'klasik', eslik: 'eslik', san: 'san' }[s.id]] };
+  });
+  const first = plan.find(p => p.it);
   const todaySec = db.log[today()] || 0, st = streak();
-  const stage = STAGES.find(s => s.n === (first?.l.stage || 6));
   app.innerHTML = `<section class="home">
     <header class="home-top">
-      <div><h1>Bugünkü porte</h1><p class="lede">${esc(stage.name)}. ${esc(stage.goal)}</p></div>
-      <a class="icon-btn" href="#/ayar" aria-label="Ayarlar ve kaynaklar"><svg viewBox="0 0 22 22"><path d="M3 6h9m5 0h2M3 16h2m5 0h9"/><circle cx="14.500" cy="6" r="2.400"/><circle cx="7.500" cy="16" r="2.400"/></svg></a>
+      <div><h1>Bugünkü porte</h1><p class="lede"><a href="#/unite/${un}">Ünite ${un}: ${esc(U.name)}</a>. ${esc(U.aim)}</p>
+      <div class="bar"><i style="width:${P.pct}%"></i></div></div>
+      <a class="icon-btn" href="#/ayar" aria-label="Ayarlar ve kaynaklar"><svg viewBox="0 0 22 22"><path d="M3 6h9m5 0h2M3 16h2m5 0h9"/><circle cx="14.5" cy="6" r="2.4"/><circle cx="7.5" cy="16" r="2.4"/></svg></a>
     </header>
     <div class="mins seg" role="group" aria-label="Süre">${[15, 30, 45].map(m => `<button data-m="${m}" class="${S.minutes === m ? 'on' : ''}">${m} dakika</button>`).join('')}</div>
-    <div class="staff-board">
-      ${F_CLEF}
-      <ol class="staff-lines">
-        ${plan.map(({ t, l, m }) => l ? `<li><a href="#/ders/${l.id}">${HEAD(false)}<span class="lt"><small>${t.name}</small><b>${esc(l.title)}</b></span><span class="lm">${m} dk</span></a></li>` : `<li><div class="empty-line">${HEAD(true)}<span class="lt"><small>${t.name}</small><b>Bu kol bitti</b></span></div></li>`).join('')}
-      </ol>
+    <div class="staff-board">${F_CLEF}
+      <ol class="staff-lines">${plan.map(({ s, it, m }) => {
+    if (!it) return `<li><div class="empty-line">${HEAD(true)}<span class="lt"><small>${s.name}</small><b>Bu kol bitti</b></span></div></li>`;
+    const k = nextIdx(it), step = stepsOf(it)[k];
+    return `<li><a href="#/adim/${it.id}/${k}">${HEAD(false)}<span class="lt"><small>${s.name}${stepsOf(it).length > 1 ? ': ' + esc(step.group ? step.group + ', ' + step.t : step.t) : ''}</small><b>${esc(it.title)}</b></span><span class="lm">${m} dk</span></a></li>`;
+  }).join('')}</ol>
     </div>
-    ${first ? `<a class="primary wide" href="#/ders/${first.l.id}">${esc(first.t.name)} ile başla</a>` : '<p class="lede">Bütün dersleri bitirdin. Eşlik sekmesinde kendi şarkılarınla devam et.</p>'}
-    <p class="tally">${Math.round(todaySec / 60)} dakika çalıştın, ${st} günlük seri, ${doneCount} / ${LESSONS.length} ders.</p>
-    <section class="book">
-      <h2>Enver Tufan metodu</h2>
+    ${first ? `<a class="primary wide" href="#/adim/${first.it.id}/${nextIdx(first.it)}">${esc(first.s.name)} ile başla</a>` : '<p class="lede">Bütün üniteleri bitirdin.</p>'}
+    <p class="tally">${Math.round(todaySec / 60)} dakika çalıştın, ${st} günlük seri.</p>
+    <section class="book"><h2>Enver Tufan metodu</h2>
       <div class="book-row"><button class="round" data-b="-1" aria-label="Sayfayı azalt">−</button><strong>Sayfa ${S.book}</strong><button class="round" data-b="1" aria-label="Sayfayı artır">+</button></div>
-      <p>Kitabın her yeni sayfasında önce sol eli solfejle söyle, sonra yalnız sol eli çal, en son iki eli birleştir.</p>
-    </section>
+      <p>Her yeni sayfada önce sol eli solfejle söyle, sonra yalnız sol eli çal, en son iki eli birleştir.</p></section>
   </section>`;
   app.querySelector('.mins').onclick = (e) => { const b = e.target.closest('[data-m]'); if (b) { S.minutes = +b.dataset.m; save(); bugun(); } };
   app.querySelector('.book').onclick = (e) => { const b = e.target.closest('[data-b]'); if (b) { S.book = Math.max(1, S.book + +b.dataset.b); save(); bugun(); } };
 }
 
-// --- Yol: her aşama bir ölçü
-function yol() {
-  const firstOpen = LESSONS.find(l => !db.done[l.id]);
-  app.innerHTML = `<section class="path"><h1>Yol haritası</h1>
-    <p class="lede">Beş çizgi beş koldur: okuma, iki el, klasik, eşlik, şan. Dolu notalar bitti, halkalı nota sıradaki ders. Bir aşamanın notalarına dokun.</p>
-    ${STAGES.map(st => {
-    const inS = LESSONS.filter(l => l.stage === st.n);
-    const done = inS.filter(l => db.done[l.id]).length;
-    return `<article class="stage"><header><h2><span class="snum">${st.n}</span>${esc(st.name)}</h2><span class="sdone">${done}/${inS.length}</span></header>
-      <p>${esc(st.goal)}</p>
-      <div class="mstaff">${TRACKS.map(t => {
-      const ls = inS.filter(l => l.track === t.id);
-      return `<div class="mline"><span class="mt">${t.name}</span><div class="mnotes">${ls.map(l => `<a href="#/ders/${l.id}" title="${esc(l.title)}" aria-label="${esc(t.name + ': ' + l.title)}" class="${firstOpen?.id === l.id ? 'cur' : ''}">${HEAD(!!db.done[l.id])}</a>`).join('')}</div></div>`;
-    }).join('')}</div>
-      <details><summary>Dersleri listele</summary><ul class="llist">${inS.map(l => `<li class="${db.done[l.id] ? 'd' : ''}"><a href="#/ders/${l.id}"><small>${TRACKS.find(t => t.id === l.track).name}</small> ${esc(l.title)}</a></li>`).join('')}</ul></details>
-    </article>`;
-  }).join('')}
+// --- Üniteler: ilerleme haritası
+function uniteler() {
+  const cur = curUnit();
+  const cell = (u, s) => { const a = unitItems(u.n).filter(x => x.strand === s.id); const tot = a.reduce((t, x) => t + stepsOf(x).length, 0), d = a.reduce((t, x) => t + doneCount(x), 0); return `<td><span class="dot" style="--p:${tot ? Math.round(100 * d / tot) : 0}%" title="${s.name}: ${d}/${tot}"></span></td>`; };
+  app.innerHTML = `<section class="plain"><h1>Üniteler</h1>
+    <p class="lede">Sekiz ünite, kolaydan zora. Her ünitede beş kol var: Okuma, Etüt, Eser, Eşlik, Şan. Bir üniteyi bitirince sonraki gelir; takılırsan ileri bakmakta serbestsin.</p>
+    <table class="map"><thead><tr><th></th>${STRANDS.map(s => `<th>${s.name}</th>`).join('')}</tr></thead><tbody>
+      ${UNITS.map(u => `<tr class="${u.n === cur ? 'here' : ''}"><th><a href="#/unite/${u.n}"><b>${u.n}</b> ${esc(u.name)}</a></th>${STRANDS.map(s => cell(u, s)).join('')}</tr>`).join('')}
+    </tbody></table>
+    <div class="units">${UNITS.map(u => { const p = unitProgress(u.n); return `<a class="unit ${u.n === cur ? 'here' : ''}" href="#/unite/${u.n}"><span class="un">${u.n}</span><span class="ub"><b>${esc(u.name)}</b><small>${u.level}${u.n === cur ? ', buradasın' : ''}</small><span class="tops">${u.topics.slice(0, 3).map(esc).join(', ')}</span><span class="bar"><i style="width:${p.pct}%"></i></span></span></a>`; }).join('')}</div>
   </section>`;
 }
-
-// --- Okuma
-function okuma() {
-  const lv = Object.entries(READ_LEVELS);
-  const score = (id) => { const s = db.reading[id]; if (!s) return ''; const a = Object.values(s); const n = a.reduce((x, y) => x + y.n, 0), e = a.reduce((x, y) => x + y.e, 0); return n ? `yüzde ${Math.round(100 * (1 - e / n))}` : ''; };
-  app.innerHTML = `<section class="plain"><h1>Okuma</h1>
-    <p class="lede">Kafiye ezberleme yok. Duraklar öğrenilir, gerisi durağa olan uzaklıktan okunur. Yanlış yaptığın notalar daha sık gelir.</p>
-    <h2>Nota bulma</h2><ul class="levels">${lv.map(([id, l]) => `<li><a href="#/oku/${id}"><span>${esc(l.title)}</span><small>${score(id)}</small></a></li>`).join('')}</ul>
-    <h2>Deşifre</h2><p>Her açılışta yeni, kısa bir parça üretilir.</p>
-    <form class="form" id="sf"><label>Düzey<select name="level"><option value="1">1: tam ve yarımlık</option><option value="2">2: eller sırayla</option><option value="3">3: iki el birlikte</option><option value="4">4: sekizlik ve noktalı</option></select></label>
-    <label>El<select name="hands"><option value="lh">Sol el</option><option value="rh">Sağ el</option><option value="both">İki el</option></select></label>
-    <button class="primary">Yeni parça üret</button></form></section>`;
-  app.querySelector('#sf').onsubmit = (e) => { e.preventDefault(); const f = new FormData(e.target); launch({ def: sightScore({ level: +f.get('level'), hands: f.get('hands') }), hands: f.get('hands'), startMode: 'wait', title: 'Deşifre', sub: 'Önce 10 saniye bak, sonra durmadan çal.' }, 'okuma'); };
+function unite(n) {
+  const u = UNITS[n - 1]; if (!u) return go('uniteler');
+  const here = ITEMS.filter(x => x.unit === n), nextHere = here.find(x => !isDone(x));
+  app.innerHTML = `<section class="plain">${back('uniteler', 'Üniteler')}
+    <h1>Ünite ${n}: ${esc(u.name)}</h1><p class="lede">${esc(u.aim)}</p>
+    <div class="chips">${u.topics.map(t => `<span class="tchip">${esc(t)}</span>`).join('')}</div>
+    ${STRANDS.map(s => { const a = here.filter(x => x.strand === s.id); return a.length ? `<h2>${s.name}</h2><p class="snote">${s.note}</p><ul class="ilist">${a.map(it => row(it, it === nextHere, false)).join('')}</ul>` : ''; }).join('')}
+    ${u.pdf ? `<h2>Ek nota</h2><p>${u.pdf.map(([t, url]) => `<a href="${url}" target="_blank" rel="noopener">${esc(t)}</a>`).join(', ')} (IMSLP, ücretsiz PDF). Kitabındaki sırayla karşılaştırabilirsin.</p>` : ''}
+    <div class="navs">${n > 1 ? `<a class="txt-btn" href="#/unite/${n - 1}">Önceki ünite</a>` : '<span></span>'}${n < 8 ? `<a class="txt-btn" href="#/unite/${n + 1}">Sonraki ünite</a>` : ''}</div>
+  </section>`;
 }
-
+// Bir öğenin çalışma planı
+function isPage(id) {
+  const it = itemById(id); if (!it) return go('uniteler');
+  const steps = stepsOf(it), nx = nextIdx(it), allDone = isDone(it);
+  if (it.kind === 'studio') return go('sarki');
+  let body = '';
+  if (it.kind === 'piece') {
+    const groups = [...new Set(steps.filter(s => s.group).map(s => s.group))];
+    body = `<table class="sect"><thead><tr><th></th><th>Sol el</th><th>Sağ el</th><th>İki el</th></tr></thead><tbody>${groups.map(g => `<tr><th>${g}</th>${steps.map((s, i) => [s, i]).filter(([s]) => s.group === g).map(([s, i]) => `<td><a class="stepb ${db.steps[id]?.[i] ? 'd' : ''} ${i === nx && !allDone ? 'nx' : ''}" href="#/adim/${id}/${i}" aria-label="${g}, ${s.t}">${db.steps[id]?.[i] ? '✓' : ''}</a></td>`).join('')}</tr>`).join('')}</tbody></table>
+    ${steps.some(s => !s.group) ? steps.map((s, i) => [s, i]).filter(([s]) => !s.group).map(([s, i]) => `<a class="wholeb ${db.steps[id]?.[i] ? 'd' : ''}" href="#/adim/${id}/${i}">${HEAD(!!db.steps[id]?.[i])}<span>${s.t}</span></a>`).join('') : ''}`;
+  } else {
+    body = `<ol class="steps">${steps.map((s, i) => `<li class="${db.steps[id]?.[i] ? 'd' : ''} ${i === nx && !allDone ? 'nx' : ''}"><a href="#/adim/${id}/${i}"><span class="sn">${db.steps[id]?.[i] ? '✓' : i + 1}</span><span class="st"><b>${esc(s.t)}</b>${s.hint ? `<small>${esc(s.hint)}</small>` : ''}</span></a></li>`).join('')}</ol>`;
+  }
+  const chords = it.kind === 'ak' ? `<div class="chcards">${it.chords.map(c => `<figure>${miniKeys(c)}<figcaption><b>${esc(c)}</b> ${chordNotes(c).map(n => solfegeName(n)).join(' ')}</figcaption></figure>`).join('')}</div>
+    <p class="snote">Her eşlik dersi aynı sırayla ilerler: akoru tanı, sol el, sağ el, iki el yavaş, sonra tempoda.</p>` : '';
+  const how = it.kind === 'piece' ? '<p class="snote">Her satır bir bölüm. Kutuya dokunup o bölümü o elle çalış. Bitirdiğin kutu işaretlenir.</p>' : '';
+  app.innerHTML = `<section class="plain">${back('unite/' + it.unit, 'Ünite ' + it.unit)}
+    <h1>${esc(it.title)}</h1>${it.composer ? `<p class="comp">${esc(it.composer)}</p>` : ''}
+    ${it.why ? `<p class="lede">${esc(it.why)}</p>` : ''}${chords}
+    <a class="primary wide" href="#/adim/${id}/${nx}">${allDone ? 'Yeniden çalış' : doneCount(it) ? 'Devam et' : 'Başla'}</a>
+    ${how}${body}
+  </section>`;
+}
+// --- Eşlik sekmesi: ders listesi
+function eslik() {
+  app.innerHTML = `<section class="plain"><h1>Eşlik</h1>
+    <p class="lede">Akorla şarkı çalmayı adım adım öğreniyoruz. Her ders aynı sırada ilerler: akoru klavyede tanı, sol elle kökleri çal, sağ elle akorları çal, iki eli yavaş birleştir, sonra tempoda ve kalıpla çal.</p>
+    <a class="primary wide" href="#/sarki">Kendi şarkımı çal</a>
+    <h2>Dersler</h2>${strandList('eslik')}
+  </section>`;
+}
 // --- Eşlik
 const SEMI = [...Array(12).keys()];
 const KEY_LIST = (mode) => SEMI.map(pc => { const f = mode === 'minor' ? MINOR_FIFTHS_BY_PC[pc] : MAJOR_FIFTHS_BY_PC[pc]; return { f, pc, label: keyName(f, mode) + ' (' + keyLetter(f, mode) + ')' }; });
-function eslik() {
-  const st = eslik.state || (eslik.state = { chart: 'C | G | Am | F', pattern: 'balad', tempo: 72, semi: 0, title: '' });
-  app.innerHTML = `<section class="plain"><h1>Eşlik</h1>
+function sarki() {
+  const st = sarki.state || (sarki.state = { chart: 'C | G | Am | F', pattern: 'balad', tempo: 72, semi: 0, title: '' });
+  app.innerHTML = `<section class="plain">${back('eslik', 'Eşlik')}<h1>Kendi şarkın</h1>
     <p class="lede">Akorları yaz, kalıbı seç; iki elli eşlik notası oluşsun. Ton sesine uymuyorsa kaydır.</p>
     <form class="form" id="af">
       <label class="full">Akorlar <small>Ölçüleri | ile ayır. Do, Rem gibi solfej de yazabilirsin.</small>
@@ -161,9 +242,6 @@ function eslik() {
     <h2>Şarkılarım</h2>
     <ul class="songs" id="songs"></ul>
     <form class="form" id="sv"><label class="full">Bu akorları kaydet<input name="title" placeholder="Şarkı adı" autocomplete="off"></label><button class="txt-btn">Kaydet</button></form>
-    <h2>Akor bul</h2>
-    <form class="form" id="cf"><label class="full">Akor adı<input name="c" value="Am7" autocapitalize="off" spellcheck="false"></label></form>
-    <p id="cnotes" class="cnotes"></p><div class="kb-host small" id="ckb"></div>
   </section>`;
   const af = app.querySelector('#af');
   const hint = () => { app.querySelector('#phint').textContent = PATTERNS[af.pattern.value].hint; };
@@ -184,7 +262,7 @@ function eslik() {
     e.preventDefault(); const r = final(); if (!r) return;
     st.chart = af.chart.value; st.pattern = af.pattern.value; st.tempo = +af.tempo.value || 72;
     const def = chartToScore({ chart: r.text, pattern: st.pattern, tempo: st.tempo, key: r.sig.fifths, title: PATTERNS[st.pattern].name, repeat: 2 });
-    launch({ def, hands: 'both', tempo: st.tempo, title: PATTERNS[st.pattern].name, sub: r.text }, 'eslik');
+    launch({ def, hands: 'both', tempo: st.tempo, title: PATTERNS[st.pattern].name, sub: r.text }, 'sarki');
   };
   app.querySelector('.prog-grid').onclick = (e) => {
     const b = e.target.closest('[data-p]'); if (!b) return;
@@ -203,21 +281,6 @@ function eslik() {
     if (d) { db.songs.splice(+d.dataset.del, 1); save(); renderSongs(); }
   };
   app.querySelector('#sv').onsubmit = (e) => { e.preventDefault(); const t = e.target.title.value.trim(); if (!t) return toast('Şarkıya bir ad ver.'); db.songs.push({ title: t, chart: af.chart.value }); save(); e.target.reset(); renderSongs(); toast('Şarkı kaydedildi.'); };
-  // Akor bulucu
-  const kb = new Keyboard(app.querySelector('#ckb'), { low: 48, high: 84, onDown: (m) => { ensureAudio(); playNote(m, 0, 0.8, 0.7); } });
-  active = { cleanup: () => kb.destroy() };
-  const cf = app.querySelector('#cf');
-  const showChord = () => {
-    const c = parseChord(cf.c.value), box = app.querySelector('#cnotes');
-    if (!c) { box.textContent = 'Bu akoru okuyamadım. Örnek: Am, F#m7, Bb, Csus4, Lam, Sol7'; kb.clearMarks(); return; }
-    const notes = c.tones.map(([d, s]) => chordTone(c, d, s, 4));
-    box.textContent = notes.map(n => solfegeName(n)).join(', ');
-    const f = notes.length === 4 ? [1, 2, 3, 5] : [1, 3, 5];
-    kb.setMarks(new Map(notes.map((n, i) => [n.midi, { hand: 'rh', finger: f[i] }])));
-    kb.focusRange(Math.min(...notes.map(n => n.midi)), Math.max(...notes.map(n => n.midi)), true);
-  };
-  cf.c.oninput = showChord; cf.onsubmit = (e) => e.preventDefault();
-  requestAnimationFrame(showChord);
 }
 
 // --- Şan
@@ -226,7 +289,9 @@ function san() {
   const st = san.state || (san.state = { ex: 'besli', style: 'akor', dir: 'up', low: '', high: '', use: 'sing' });
   const v = VOICES[S.voice];
   app.innerHTML = `<section class="plain"><h1>Şan</h1>
-    <p class="lede">Alıştırmayı kendi aralığında yarım ton yürüt. Piyano çalarken stakato, legato ve sol el akorunu aynı anda çalışırsın.</p>
+    <p class="lede">Şan alıştırmalarını piyanoda çalmayı ünite sırasıyla öğren. Serbest çalışmak istersen alttan kendi aralığını seç.</p>
+    <h2>Dersler</h2>${strandList('san')}
+    <h2>Serbest çalışma</h2>
     <form class="form" id="vf">
       <label>Ses türü<select name="voice">${Object.entries(VOICES).map(([k, x]) => `<option value="${k}" ${k === S.voice ? 'selected' : ''}>${x.name}</option>`).join('')}</select></label>
       <label>Kullanım<select name="use"><option value="sing" ${st.use === 'sing' ? 'selected' : ''}>Söyle, uygulama çalsın</option><option value="play" ${st.use === 'play' ? 'selected' : ''}>Piyanoda ben çalayım</option></select></label>
@@ -259,7 +324,7 @@ function san() {
 // --- Ayarlar ve kaynaklar
 function ayar() {
   const S = db.settings;
-  app.innerHTML = `<section class="plain"><h1>Ayarlar ve kaynaklar</h1>
+  app.innerHTML = `<section class="plain">${back('araclar', 'Araçlar')}<h1>Ayarlar ve kaynaklar</h1>
     <h2>MIDI klavye</h2><p>Chrome veya Edge'de klavyeni bağla. Bir nota çalışırken klavyende çalmaya başladığında Takip kipi kendiliğinden açılır.</p>
     <div class="row-btn"><button class="chip" id="mi">${Inputs.midi.devices.length ? 'Bağlı: ' + esc(Inputs.midi.devices.join(', ')) : 'MIDI klavyeyi bağla'}</button></div>
     <h2>Görünüm</h2><div class="seg" id="th">${[['auto', 'Sistem'], ['light', 'Açık'], ['dark', 'Koyu']].map(([k, t]) => `<button data-th="${k}" class="${S.theme === k ? 'on' : ''}">${t}</button>`).join('')}</div>
@@ -267,13 +332,14 @@ function ayar() {
     <div class="row-btn"><button class="chip" id="ex">Yedeği indir</button><label class="chip file">Yedeği yükle<input type="file" id="im" accept="application/json" hidden></label><button class="chip warn" id="rs">Her şeyi sıfırla</button></div>
     <h2>Nasıl kuruldu</h2>
     <ul class="srcs">
+      <li><b>Ünite yapısı:</b> Gitar Gelişim’deki klasik bölümün seviye düzeni örnek alındı; eser sırası RCM ve yaygın pedagojik listelerle karşılaştırıldı.</li>
       <li><b>Nota okuma:</b> Frances Clark’ın aralık ve durak nota yaklaşımı (<a href="https://www.wikipedia.org/wiki/Piano_lesson" rel="noopener">Piano pedagogy</a>), <a href="https://composecreate.com/an-integrated-approach-to-reading-music/" rel="noopener">Piano Safari</a> durak notaları.</li>
       <li><b>Çalışma kipleri:</b> Bekle, döngü ve tek el seçimi <a href="https://pianoers.com/flowkey-review/" rel="noopener">flowkey</a> ve <a href="https://www.slashgear.com/1622346/best-apps-learn-piano/" rel="noopener">Skoove</a> örneğinden.</li>
       <li><b>Temiz tekrar ve tempo merdiveni:</b> <a href="https://www.structural-learning.com/research-briefings/practise-the-hard-bit" rel="noopener">Duke, Simmons ve Cash (2009)</a>: 17 ileri düzey piyanoda süre değil, hatayı yerinde düzeltmek ertesi günkü sonucu öngördü.</li>
       <li><b>Eşlik kalıpları:</b> <a href="https://pianowithjonny.com/courses/pop-contemporary-piano-accompaniment-patterns-1/" rel="noopener">Piano With Jonny</a> sol el ve sağ el kalıp mantığı; <a href="https://en.wikipedia.org/wiki/Aksak" rel="noopener">2+2+2+3 aksak</a> ve düm-tek (maksum) deseni. Şarkı notası ve sözü yok; yalnız akor kalıpları var.</li>
       <li><b>Şan:</b> <a href="https://instruct.uwo.ca/music/999/lesson1.html" rel="noopener">Western Üniversitesi</a> üçlü ısınma ve yarım ton yürüyüş; <a href="https://artsunit.nsw.edu.au/video/warm-ups-for-your-choir-primary-eclass-3-flexibility-and-blend-1-focus-on-flexibility" rel="noopener">NSW Arts Unit</a> önce bağlı sonra stakato. Öğretmeninin yönlendirmesi her zaman önce gelir.</li>
       <li><b>Piyano sesi:</b> Musyng Kite Acoustic Grand, <a href="https://github.com/gleitz/midi-js-soundfonts" rel="noopener">midi-js-soundfonts</a> MP3 çıktısı, CC BY-SA 3.0.</li>
-      <li><b>Notalar:</b> <a href="https://www.mutopiaproject.org" rel="noopener">Mutopia Project</a> LilyPond kaynaklarından dönüştürüldü. Menuetler ve prelüd kamu malı dizgi; Schumann Melodie CC BY-SA 2.5 (Philippe Hézaine).</li>
+      <li><b>Notalar:</b> <a href="https://www.mutopiaproject.org" rel="noopener">Mutopia Project</a> LilyPond kaynaklarından dönüştürüldü. Her eserin kaynağı ders sayfasında yazar; kamu malı ya da CC BY-SA dizgilerdir.</li>
       <li><b>Yazı tipi ve işaretler:</b> Alegreya (OFL), FreeSerif müzik işaretleri (GPL + font exception).</li>
     </ul>
     <p class="muted">Enver Tufan’ın kitabının içeriği uygulamaya kopyalanmadı; sayfa numaranı kendin takip edersin.</p>
@@ -284,9 +350,47 @@ function ayar() {
   app.querySelector('#im').onchange = async (e) => { try { importData(await e.target.files[0].text()); toast('Yedek yüklendi.'); applyTheme(); route(); } catch (x) { toast('Bu dosya okunamadı.'); } };
   app.querySelector('#rs').onclick = () => { if (confirm('Bütün ilerleme silinsin mi?')) { resetAll(); applyTheme(); route(); } };
 }
+
+// --- Araçlar
+function araclar() {
+  const score = (id) => { const s = db.reading[id]; if (!s) return ''; const a = Object.values(s); const n = a.reduce((x, y) => x + y.n, 0), e = a.reduce((x, y) => x + y.e, 0); return n ? `yüzde ${Math.round(100 * (1 - e / n))}` : ''; };
+  const groups = [['Fa anahtarı', ['b1', 'b2', 'b3', 'b4', 'b5']], ['Sol anahtarı', ['t1', 't2']], ['İki porte ve aralık', ['g1', 'i1']]];
+  app.innerHTML = `<section class="plain"><h1>Araçlar</h1>
+    <p class="lede">Ünitelerin dışında serbest çalışmak için.</p>
+    <h2>Nota okuma</h2><p>Notayı gör, tuşa bas. Yanlış yaptığın notalar daha sık gelir.</p>
+    ${groups.map(([t, ids]) => `<h3>${t}</h3><ul class="levels">${ids.map(id => `<li><a href="#/oku/${id}"><span>${esc(READ_LEVELS[id].title)}</span><small>${score(id)}</small></a></li>`).join('')}</ul>`).join('')}
+    <h2>Deşifre</h2><p>Her seferinde yeni, kısa bir parça üretilir.</p>
+    <form class="form" id="sf"><label>Düzey<select name="level"><option value="1">1: tam ve yarımlık</option><option value="2">2: eller sırayla</option><option value="3">3: iki el birlikte</option><option value="4">4: sekizlik ve noktalı</option></select></label>
+    <label>El<select name="hands"><option value="lh">Sol el</option><option value="rh">Sağ el</option><option value="both">İki el</option></select></label>
+    <button class="primary">Yeni parça üret</button></form>
+    <h2>Akor bul</h2><form class="form" id="cf"><label class="full">Akor adı<input name="c" value="Am7" autocapitalize="off" spellcheck="false"></label></form>
+    <p id="cnotes" class="cnotes"></p><div class="kb-host small" id="ckb"></div>
+    <h2>Ayarlar</h2><p><a href="#/ayar">MIDI, görünüm, yedek ve kaynaklar</a></p>
+  </section>`;
+  app.querySelector('#sf').onsubmit = (e) => { e.preventDefault(); const f = new FormData(e.target); launch({ def: sightScore({ level: +f.get('level'), hands: f.get('hands') }), hands: f.get('hands'), startMode: 'wait', title: 'Deşifre', sub: 'Önce 10 saniye bak, sonra durmadan çal.' }, 'araclar'); };
+  const kb = new Keyboard(app.querySelector('#ckb'), { low: 48, high: 84, onDown: (m) => { ensureAudio(); playNote(m, 0, 0.8, 0.7); } });
+  active = { cleanup: () => kb.destroy() };
+  const cf = app.querySelector('#cf');
+  const showChord = () => {
+    const box = app.querySelector('#cnotes'), notes = chordNotes(cf.c.value);
+    if (!notes.length) { box.textContent = 'Bu akoru okuyamadım. Örnek: Am, F#m7, Bb, Csus4, Lam, Sol7'; kb.clearMarks(); return; }
+    box.textContent = notes.map(n => solfegeName(n)).join(', ');
+    const f = notes.length === 4 ? [1, 2, 3, 5] : [1, 3, 5];
+    kb.setMarks(new Map(notes.map((n, i) => [n.midi, { hand: 'rh', finger: f[i] }])));
+    kb.focusRange(Math.min(...notes.map(n => n.midi)), Math.max(...notes.map(n => n.midi)), true);
+  };
+  cf.c.oninput = showChord; cf.onsubmit = (e) => e.preventDefault();
+  requestAnimationFrame(showChord);
+}
 function applyTheme() { const t = db.settings.theme; if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.dataset.theme = t; }
 applyTheme();
 route();
 autoConnectMIDI();
 (window.requestIdleCallback || setTimeout)(() => preloadPiano());
-if ('serviceWorker' in navigator && isSecureContext) navigator.serviceWorker.register('sw.js').catch(() => { });
+if ('serviceWorker' in navigator && isSecureContext) {
+  const had = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').catch(() => { });
+  // Yeni sürüm gelince sayfayı bir kez yenile
+  let done = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (had && !done) { done = true; location.reload(); } });
+}

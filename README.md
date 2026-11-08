@@ -24,11 +24,11 @@ Bilgisayarda denemek için: klasörde `python3 -m http.server` çalıştır, `ht
 
 ## İçindekiler
 
-- **Bugün:** beş kolun her birinden sıradaki ders. 15, 30 ya da 45 dakika.
-- **Yol:** 6 aşama, 84 ders.
-- **Okuma:** durak notalardan başlayan nota bulma, aralık okuma, deşifre üretici.
-- **Eşlik:** akorları yaz (`Am F | C G`, `Lam Fa`), kalıp seç, tonu kaydır, şarkılarını kaydet.
-- **Şan:** alıştırmayı ses türüne göre yarım ton yürüt. Söyle ya da kendin çal.
+- **Bugün:** beş kolun (Okuma, Etüt, Eser, Eşlik, Şan) her birinden sıradaki adım. 15, 30 ya da 45 dakika.
+- **Üniteler:** sekiz ünitelik ilerleme haritası. Her ünitede konular, okuma, etütler, seviyeye uygun eserler, eşlik ve şan var. Her eser bölümlere ve ellere ayrılır.
+- **Eşlik:** her ders aynı sırayla ilerler: akoru tanı, sol el, sağ el, iki el yavaş, tempoda. Kendi şarkın için akorları yaz (`Am F | C G`, `Lam Fa`), kalıp seç, tonu kaydır.
+- **Şan:** alıştırmaları piyanoda çalmayı ders ders öğren ya da kendi aralığında serbest çalış.
+- **Araçlar:** nota okuma antrenörü, deşifre üretici, akor bulucu, ayarlar.
 
 ## Yeni alıştırma eklemek
 
@@ -42,7 +42,7 @@ add('benim1', { title: 'Benim alıştırmam', key: 0, time: [4, 4], tempo: 70,
 
 Biçim: `perde:süre_parmak`. Süreler `1 2 4 8 16`, noktalı `4.`. `!` stakato, `~` bağ, `(` `)` legato yayı, `<c3 e3 g3>:2` akor, `r:4` sus, `|` ölçü çizgisi, `//` aynı porteye ikinci ses. Süre yazılmazsa bir önceki süre geçerlidir. Bemol `bb3`, diyez `f#3`.
 
-Sonra `js/data/curriculum.js` içine bir ders satırı ekle. `sw.js` dosyasındaki `V` sürüm metnini değiştirirsen telefonlar yeni dosyaları alır.
+Sonra `js/data/units.js` içinde ilgili üniteye `ex('benim1', 'Neden bu alıştırma')` satırı ekle.
 
 ## Yapı
 
@@ -50,8 +50,8 @@ Sonra `js/data/curriculum.js` içine bir ders satırı ekle. `sw.js` dosyasında
 
 ## Lisans notları
 
-- Notalar [Mutopia Project](https://www.mutopiaproject.org) LilyPond kaynaklarından dönüştürüldü. BWV Anh. 114, 115, 116 ve BWV 846 kamu malı dizgidir. Schumann Melodie: Philippe Hézaine, CC BY-SA 2.5; bu nota verisini paylaşırsan aynı lisans geçerlidir.
-- Parmak numaraları Melodie dışında bu uygulama için önerilmiştir; öğretmenin başka bir parmak verirse onu kullan.
+- Notalar [Mutopia Project](https://www.mutopiaproject.org) LilyPond kaynaklarından dönüştürüldü. Bir kısmı kamu malı dizgi, bir kısmı CC BY-SA'dır (Schumann ve bazı Bach parçaları); her eserin ders sayfasında yazar. CC BY-SA olanları paylaşırsan aynı lisans geçerlidir.
+- İki Petzold menuetinin parmak numaraları bu uygulama için önerilmiştir; diğerleri kaynaktan gelir ya da yoktur. Öğretmenin başka bir parmak verirse onu kullan.
 - Piyano sesi: Musyng Kite Acoustic Grand, [midi-js-soundfonts](https://github.com/gleitz/midi-js-soundfonts) MP3 çıktısı, CC BY-SA 3.0 (`sounds/piano/KAYNAK.txt`).
 - Alegreya yazı tipleri: SIL Open Font License (`fonts/OFL.txt`).
 - Müzik işaretleri GNU FreeFont/FreeSerif anahatlarından alındı (GPLv3 + font exception).

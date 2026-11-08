@@ -25,19 +25,19 @@ function head(cx, cy, base) {
 }
 const isShort = (ev) => !ev.rest && ['8', '16', '32', '12', '8.', '16.'].includes(ev.base);
 const flagCount = (b) => b.startsWith('16') ? 2 : b.startsWith('32') ? 3 : (b.startsWith('8') || b.startsWith('12')) ? 1 : 0;
-const hasStem = (ev) => !ev.rest && !ev.base.startsWith('1') || (ev.base.startsWith('12') || ev.base.startsWith('16'));
 const noStem = (ev) => ev.rest || ev.base === '1' || ev.base === '1.';
 
-function beatGrid(time, sixteenth) {
+function beatGrid(time, sixteenth, beats) {
   const [n, d] = time;
+  if (beats) return beats;
   if (d === 8) {
+    if (n === 3) return [1.5];
     if (n === 6) return [1.5, 1.5];
+    if (n === 9) return [1.5, 1.5, 1.5];
     if (n === 12) return [1.5, 1.5, 1.5, 1.5];
-    if (n === 9) return [1, 1, 1, 1.5];
-    if (n === 7) return [1, 1, 1.5];
-    if (n === 5) return [1, 1.5];
     return Array(n).fill(0.5);
   }
+  if (d === 2) return sixteenth ? Array(n * 2).fill(1) : Array(n).fill(2);
   if (n === 4 && !sixteenth) return [2, 2];
   return Array(n).fill(4 / d);
 }
@@ -230,7 +230,7 @@ export class Engraved {
     const twoV = st.voices.length > 1;
     st.voices.forEach((v, vi) => {
       const forced = twoV ? (vi === 0 ? 'up' : 'down') : null;
-      const groups = beamGroups(v, m.time);
+      const groups = beamGroups(v, m.time, this.score.beats);
       const info = v.map(ev => {
         const x = interp(onsets, ev.t, 0);
         const ys = ev.notes.map(n => y0 + (top - n.dia) * HALF);
@@ -269,19 +269,19 @@ export class Engraved {
         const lineY = (x) => f.y + (up ? -34 : 34) + slope * (x - f.x) + (up ? -off : off);
         pts.forEach(p => stemEnds.set(p.i, lineY(p.x)));
         const th = 4.6, dir = up ? 1 : -1;
-        out.push(`<path class="beam" d="M${r1(f.x)} ${r1(lineY(f.x))}L${r1(l.x)} ${r1(lineY(l.x))}L${r1(l.x)} ${r1(lineY(l.x) + th * dir)}L${r1(f.x)} ${r1(lineY(f.x) + th * dir)}Z"/>`);
+        out.push(`<path class="beam b-${staff}" d="M${r1(f.x)} ${r1(lineY(f.x))}L${r1(l.x)} ${r1(lineY(l.x))}L${r1(l.x)} ${r1(lineY(l.x) + th * dir)}L${r1(f.x)} ${r1(lineY(f.x) + th * dir)}Z"/>`);
         // ikinci kiriş
         for (let k = 0; k < g.length - 1; k++) {
           const a = v[g[k]], b = v[g[k + 1]];
           if (flagCount(a.base) >= 2 && flagCount(b.base) >= 2) {
             const x1 = pts[k].x, x2 = pts[k + 1].x, d = 7 * dir;
-            out.push(`<path class="beam" d="M${r1(x1)} ${r1(lineY(x1) + d)}L${r1(x2)} ${r1(lineY(x2) + d)}L${r1(x2)} ${r1(lineY(x2) + d + th * dir)}L${r1(x1)} ${r1(lineY(x1) + d + th * dir)}Z"/>`);
+            out.push(`<path class="beam b-${staff}" d="M${r1(x1)} ${r1(lineY(x1) + d)}L${r1(x2)} ${r1(lineY(x2) + d)}L${r1(x2)} ${r1(lineY(x2) + d + th * dir)}L${r1(x1)} ${r1(lineY(x1) + d + th * dir)}Z"/>`);
           } else if (flagCount(a.base) >= 2 && (k === 0 || flagCount(v[g[k - 1]].base) < 2)) {
             const x1 = pts[k].x, x2 = x1 + 7, d = 7 * dir;
-            out.push(`<path class="beam" d="M${r1(x1)} ${r1(lineY(x1) + d)}L${r1(x2)} ${r1(lineY(x2) + d)}L${r1(x2)} ${r1(lineY(x2) + d + th * dir)}L${r1(x1)} ${r1(lineY(x1) + d + th * dir)}Z"/>`);
+            out.push(`<path class="beam b-${staff}" d="M${r1(x1)} ${r1(lineY(x1) + d)}L${r1(x2)} ${r1(lineY(x2) + d)}L${r1(x2)} ${r1(lineY(x2) + d + th * dir)}L${r1(x1)} ${r1(lineY(x1) + d + th * dir)}Z"/>`);
           } else if (flagCount(b.base) >= 2 && k === g.length - 2) {
             const x2 = pts[k + 1].x, x1 = x2 - 7, d = 7 * dir;
-            out.push(`<path class="beam" d="M${r1(x1)} ${r1(lineY(x1) + d)}L${r1(x2)} ${r1(lineY(x2) + d)}L${r1(x2)} ${r1(lineY(x2) + d + th * dir)}L${r1(x1)} ${r1(lineY(x1) + d + th * dir)}Z"/>`);
+            out.push(`<path class="beam b-${staff}" d="M${r1(x1)} ${r1(lineY(x1) + d)}L${r1(x2)} ${r1(lineY(x2) + d)}L${r1(x2)} ${r1(lineY(x2) + d + th * dir)}L${r1(x1)} ${r1(lineY(x1) + d + th * dir)}Z"/>`);
           }
         }
         if (g.every(i => v[i].triplet)) {
@@ -556,9 +556,9 @@ function dots(x, stavesY) {
   }
   return s;
 }
-function beamGroups(v, time) {
+function beamGroups(v, time, beats) {
   const sixteenth = v.some(e => e.base.startsWith('16') || e.base.startsWith('32'));
-  const grid = beatGrid(time, sixteenth);
+  const grid = beatGrid(time, sixteenth, beats);
   const groups = []; let cur = [], gi = 0, boundary = grid[0];
   const flush = () => { if (cur.length) groups.push(cur); cur = []; };
   v.forEach((e, i) => {

@@ -27,10 +27,11 @@ export function mountPractice(root, cfg, { onExit }) {
     <header class="p-head">
       <button class="icon-btn" data-a="back" aria-label="Geri">${I.back}</button>
       <div class="p-title"><h1>${esc(cfg.title || def.title || 'Çalışma')}</h1>${cfg.sub ? `<p>${esc(cfg.sub)}</p>` : ''}</div>
-      ${cfg.how?.length ? `<button class="txt-btn ${lessonId && !db.seen?.[lessonId] ? 'on' : ''}" data-a="how">Nasıl çalışılır</button>` : ''}
+      ${cfg.how?.length ? '<button class="txt-btn" data-a="how">İpuçları</button>' : ''}
       <button class="icon-btn" data-a="set" aria-label="Ayarlar">${I.gear}</button>
     </header>
-    ${cfg.how?.length ? `<div class="p-how" ${lessonId && !db.seen?.[lessonId] ? '' : 'hidden'}><p class="goal">${esc(cfg.goal || '')}</p><ol>${cfg.how.map(h => `<li>${esc(h)}</li>`).join('')}</ol>${cfg.src ? `<p class="src">${esc(cfg.src)}</p>` : ''}</div>` : ''}
+    ${cfg.how?.length ? `<div class="p-how" hidden><ol>${cfg.how.map(h => `<li>${esc(h)}</li>`).join('')}</ol>${cfg.src ? `<p class="src">${esc(cfg.src)}</p>` : ''}</div>` : ''}
+    ${cfg.goal ? `<p class="p-goal">${esc(cfg.goal)}</p>` : ''}
     ${cfg.note ? `<p class="p-note">${esc(cfg.note)}</p>` : ''}
     <div class="score-view" tabindex="0" aria-label="Nota"><div class="score-host"></div></div>
     <div class="p-status" role="status"></div>
@@ -53,11 +54,11 @@ export function mountPractice(root, cfg, { onExit }) {
         </div>
       </div>
       <div class="dock-row minor">
+        ${cfg.onDone ? `<button class="chip done" data-a="finish">${esc(cfg.doneLabel || 'Adımı bitir')}</button>` : ''}
         ${Inputs.midi.supported ? '<button class="chip midi" data-a="midi"></button>' : ''}
         <button class="chip" data-a="loop">Döngü</button>
         <button class="chip" data-a="hint"></button>
         ${cfg.showBreak ? '<button class="chip" data-a="break">Ezberi kır</button>' : ''}
-        ${lessonId ? '<button class="chip done" data-a="finish">Dersi bitir</button>' : ''}
       </div>
     </div>
     <div class="kb-host"></div>
@@ -65,7 +66,6 @@ export function mountPractice(root, cfg, { onExit }) {
   </section>`;
   const $ = (s) => root.querySelector(s);
   const S = db.settings;
-  if (lessonId) { db.seen = db.seen || {}; db.seen[lessonId] = true; save(); }
   const scoreHost = $('.score-host'), view = $('.score-view'), status = $('.p-status');
   let eng, pl;
   const engrave = () => {
@@ -87,7 +87,7 @@ export function mountPractice(root, cfg, { onExit }) {
   pl.hands = cfg.hands || 'both';
   const stored = lessonId && db.tempo[lessonId];
   pl.tempo = stored || cfg.tempo || def.tempo || 72;
-  pl.metro = S.metro; pl.countIn = S.countIn; pl.hint = S.hint;
+  pl.metro = S.metro; pl.countIn = S.countIn; pl.hint = cfg.noHint ? 'off' : S.hint;
   pl.buildSteps();
   enableComputerKeys(true);
   let pedal = false; const held = new Set();
@@ -115,6 +115,8 @@ export function mountPractice(root, cfg, { onExit }) {
     b.classList.toggle('on', on);
   }
   const updateUI = () => {
+    scoreHost.classList.toggle('dim-lh', pl.hands === 'rh');
+    scoreHost.classList.toggle('dim-rh', pl.hands === 'lh');
     root.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === pl.mode));
     root.querySelectorAll('[data-hand]').forEach(b => b.classList.toggle('on', b.dataset.hand === pl.hands));
     $('.tval').textContent = Math.round(pl.tempo);
@@ -206,8 +208,7 @@ export function mountPractice(root, cfg, { onExit }) {
         status.textContent = `Başlangıç: ölçü ${disp(a)}. Önce sol elin ilk notasını söyle.`;
         break;
       }
-      case 'finish':
-        db.done[lessonId] = true; save(); toast('Ders tamamlandı.'); cleanup(); onExit(); break;
+      case 'finish': cleanup(); cfg.onDone(); break;
     }
   });
   async function doMidi() {
@@ -257,7 +258,11 @@ export function mountPractice(root, cfg, { onExit }) {
       if (e.target.dataset.r === 'vol') { S.volume = +e.target.value; setVolume(S.volume); save(); }
     };
   }
-  const relayout = () => { engrave(); pl.previewStart(); };
+  const relayout = () => {
+    engrave();
+    if (pl.state === 'following') pl.enterFollow();
+    else if (pl.state === 'idle') pl.previewStart();
+  };
   let lastW = view.clientWidth, rT;
   const ro = new ResizeObserver(() => {
     if (!view.isConnected || view.clientWidth < 100 || Math.abs(view.clientWidth - lastW) < 8) return; lastW = view.clientWidth;

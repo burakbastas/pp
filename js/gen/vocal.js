@@ -75,7 +75,7 @@ export function vocalScore({ ex: exId, voice = 'tenor', low, high, dir = 'up', s
       }).sort((a, b) => a.midi - b.midi);
       rh.push(`<${domTones.map(pitchStr).join(' ')}>:2 r:2`);
       lh.push(`${pitchStr(domBass)}:2 r:2`);
-      keys.push(fifths); lyrics.push(null); chords.push([[0, keyLetter(fifths, mode).replace('m', '') && domSym(dom, mode)]]); labels.push('hazırlık');
+      keys.push(fifths); lyrics.push(null); chords.push([[0, domSym(dom, mode)]]); labels.push('hazırlık');
     }
     // ezgiyi ölçülere böl
     let t = 0; let bar = [], barIdx = 0; const barsR = [], lyr = []; let curLyr = [];

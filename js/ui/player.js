@@ -88,7 +88,7 @@ export class Player {
     this.raf = requestAnimationFrame(() => this.frame());
   }
   pump() {
-    const ctx = audioCtx(), now = ctx.currentTime, horizon = now + 0.22, spq = this.spqNow;
+    const ctx = audioCtx(), now = ctx.currentTime, horizon = now + 0.4, spq = this.spqNow;
     while (this.nextIdx < this.notes.length) {
       const n = this.notes[this.nextIdx];
       const when = this.t0 + n.at * spq;

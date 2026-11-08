@@ -1,6 +1,6 @@
 // Bu dosyadaki alıştırmalar bu uygulama için yazıldı ya da kamu malı ezgilere dayanır.
 import { scaleDegree, makePitch, pitchStr, parsePitch, SCALE, addInterval, keyAlter } from '../notation/theory.js';
-import { NOTES } from './notes.js';
+import { NOTES, META } from './notes.js';
 
 const E = {};
 const add = (id, d) => { E[id] = { id, time: [4, 4], key: 0, tempo: 66, ...d }; };
@@ -28,6 +28,14 @@ add('bi07', { title: 'Sol dörtlük, sağ sekizlik', rh: 'c4:8_1 d4_2 e4_3 f4_4 
 add('bi08', { title: 'Sağ dörtlük, sol sekizlik', rh: 'c4:4_1 e4_3 g4_5 e4_3 | c4_1 g4_5 e4_3 g4_5 | c4:1_1', lh: 'c3:8_5 d3_4 e3_3 f3_2 g3_1 f3_2 e3_3 d3_4 | c3_5 e3_3 d3_4 f3_2 e3_3 g3_1 f3_2 d3_4 | c3:1_5', tempo: 60 });
 add('bi09', { title: 'Vuruş arası: senkop hazırlığı', rh: 'r:8 e4:8_3 r:8 e4 r:8 e4 r:8 e4 | r:8 f4:8_4 r:8 f4 r:8 f4 r:8 f4 | r:8 d4:8_2 r:8 d4 r:8 d4 r:8 d4 | r:8 e4:8_3 r:8 e4 c4:2_1', lh: 'c3:4_5 g3_1 c3_5 g3_1 | f2:4_5 c3_2 f2_5 c3_2 | g2:4_5 d3_2 g2_5 d3_2 | c3:4_5 g3_1 c3:2_5', tempo: 60 });
 add('bi10', { title: 'Küçük Alberti', rh: 'e4:2_3 g4:2_5 | f4:2_4 a4:2_5 | g4:4_4 f4_3 e4_2 d4_1 | c4:1_1', lh: 'c3:8_5 g3_1 e3_3 g3_1 c3_5 g3_1 e3_3 g3_1 | c3_5 a3_1 f3_3 a3_1 c3_5 a3_1 f3_3 a3_1 | b2_5 g3_1 d3_3 g3_1 b2_5 g3_1 d3_3 g3_1 | c3:1_5', tempo: 66 });
+
+// İki elli ilk parçalar (kamu malı ezgiler, basit düzenleme)
+add('ode2', { title: 'Neşeye Övgü, iki el', tempo: 72,
+  rh: 'e4:4_3 e4 f4_4 g4_5 | g4 f4_4 e4_3 d4_2 | c4_1 c4 d4_2 e4_3 | e4:4._3 d4:8_2 d4:2 | e4:4_3 e4 f4_4 g4_5 | g4 f4_4 e4_3 d4_2 | c4_1 c4 d4_2 e4_3 | d4:4._2 c4:8_1 c4:2',
+  lh: 'c3:2_5 e3:2_3 | d3:2_4 g3:2_1 | e3:2_3 c3:2_5 | c3:2_5 g3:2_1 | c3:2_5 e3:2_3 | d3:2_4 g3:2_1 | e3:2_3 c3:2_5 | g3:2_1 c3:2_5' });
+add('frere', { title: 'Frère Jacques, kanon', tempo: 80,
+  rh: 'c4:4_1 d4_2 e4_3 c4_1 | c4 d4_2 e4_3 c4_1 | e4_3 f4_4 g4:2_5 | e4:4_3 f4_4 g4:2_5 | c4:1_1 | c4:1_1',
+  lh: 'r:1 | r:1 | c3:4_5 d3_4 e3_3 c3_5 | c3 d3_4 e3_3 c3_5 | e3_3 f3_2 g3:2_1 | e3:4_3 f3_2 g3:2_1' });
 
 function scaleEx(id, title, tonicR, scale, fifths, fR, fL, tempo = 66) {
   const tR = parsePitch(tonicR), tL = addInterval(tR, -7, -12);
@@ -67,18 +75,22 @@ function dia(d) { const o = Math.floor(d / 7), s = ((d % 7) + 7) % 7; return mak
 hanon('hanon1');
 
 // --- Repertuvar
+const SRC_PD = 'Mutopia Project, kamu malı dizgi.';
 export const PIECES = {
-  gm: { title: 'Menuet sol minör', composer: 'Christian Petzold (uzun süre Bach’a atfedildi), BWV Anh. 115', key: -2, time: [3, 4], tempo: 112, src: 'Mutopia 2015/08/21-76, kamu malı dizgi. Parmak numaraları bu uygulama için önerildi.' },
-  gM: { title: 'Menuet Sol majör', composer: 'Christian Petzold, BWV Anh. 114', key: 1, time: [3, 4], tempo: 116, src: 'Mutopia 2017/01/19-75, kamu malı dizgi. Parmak numaraları bu uygulama için önerildi.' },
-  a116: { title: 'Menuet Sol majör', composer: 'Anonim, Anna Magdalena Defteri, BWV Anh. 116', key: 1, time: [3, 4], tempo: 112, src: 'Mutopia, kamu malı dizgi.' },
-  mel: { title: 'Melodie', composer: 'Robert Schumann, Album für die Jugend Op. 68/1', key: 0, time: [4, 4], tempo: 76, clefL: 'treble', src: 'Mutopia 2007/02/11-647, Philippe Hézaine, CC BY-SA 2.5. Parmak numaraları kaynaktan.' },
-  prel: { title: 'Prelüd Do majör', composer: 'J. S. Bach, Das Wohltemperierte Clavier I, BWV 846', key: 0, time: [4, 4], tempo: 72, src: 'Mutopia 2011/09/12-5, kamu malı dizgi.' },
+  gm: { title: 'Menuet sol minör', composer: 'Christian Petzold (uzun süre Bach’a atfedildi), BWV Anh. 115', key: -2, time: [3, 4], tempo: 112, src: SRC_PD + ' Parmak numaraları bu uygulama için önerildi.' },
+  gM: { title: 'Menuet Sol majör', composer: 'Christian Petzold, BWV Anh. 114', key: 1, time: [3, 4], tempo: 116, src: SRC_PD + ' Parmak numaraları bu uygulama için önerildi.' },
+  a116: { title: 'Menuet Sol majör', composer: 'Anna Magdalena Defteri, BWV Anh. 116', key: 1, time: [3, 4], tempo: 112, src: SRC_PD },
+  mel: { title: 'Melodie', composer: 'Robert Schumann, Album für die Jugend Op. 68/1', key: 0, time: [4, 4], tempo: 76, clefL: 'treble', src: 'Mutopia Project, Philippe Hézaine, CC BY-SA 2.5. Parmak numaraları kaynaktan.' },
+  prel: { title: 'Prelüd Do majör', composer: 'J. S. Bach, Das Wohltemperierte Clavier I, BWV 846', key: 0, time: [4, 4], tempo: 72, src: SRC_PD },
 };
+for (const [k, m] of Object.entries(META)) PIECES[k] = { ...m, src: /Creative/.test(m.src) ? 'Mutopia Project, CC BY-SA.' : SRC_PD };
 export function pieceDef(id, { from = 0, to = null, keepRepeats = false } = {}) {
   const p = PIECES[id], n = NOTES[id], end = to ?? n.rh.length;
   const whole = from === 0 && to === null;
+  // Bölüm ortadan başlıyorsa o ana kadarki anahtar değişimlerini bul
+  const clefAt = (arr, start) => { let c = start; for (let i = 0; i < from; i++) { if (/%b/.test(arr[i])) c = 'bass'; if (/%t/.test(arr[i])) c = 'treble'; } return c; };
   const clean = (b) => (keepRepeats && whole) ? b : b.replace(/\|:\s*/g, '').replace(/\s*:\|/g, '');
-  return { title: p.title, key: p.key, time: p.time, tempo: p.tempo, clefL: p.clefL, rh: n.rh.slice(from, end).map(clean), lh: n.lh.slice(from, end).map(clean), firstBar: from };
+  return { title: p.title, key: p.key, time: p.time, tempo: p.tempo, clefL: clefAt(n.lh, p.clefL || 'bass'), clefR: clefAt(n.rh, p.clefR || 'treble'), pickup: from === 0 ? p.pickup : 0, rh: n.rh.slice(from, end).map(clean), lh: n.lh.slice(from, end).map(clean), firstBar: from };
 }
 // Prelüdün akor hali: her ölçüdeki sesleri tek blokta toplar
 export function preludeBlocks() {

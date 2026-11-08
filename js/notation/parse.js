@@ -96,7 +96,7 @@ export function parseScore(def) {
       repeatStart: R?.repeatStart || L?.repeatStart || false,
       repeatEnd: R?.repeatEnd || L?.repeatEnd || false,
       key: def.keys ? def.keys[i] : (def.key || 0),
-      time, len: barLen,
+      time, len: (def.pickup && i === 0) ? def.pickup : barLen,
       label: def.barLabels ? def.barLabels[i] : null,
     });
   }

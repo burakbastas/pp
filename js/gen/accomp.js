@@ -12,7 +12,7 @@ export const PATTERNS = {
   senkop: { name: '3+3+2 senkop', hint: 'Say: 1-2-3, 1-2-3, 1-2. Vurgu ikinci akorun öne kaçmasında.', time: [4, 4], lh: [[0, 1.5, 'R'], [1.5, 1.5, 'r'], [3, 1, 'r']], rh: [[0, 1.5, 'c'], [1.5, 1.5, 'c'], [3, 1, 'c']] },
   kirik: { name: 'Kırık sağ el', hint: 'Sağ el akoru tek tek dağıtır; balad ve şarkı girişleri için.', time: [4, 4], lh: [[0, 2, 'r'], [2, 2, 'r']], rh: c8(['t1', 't2', 't3', 't2', 't1', 't2', 't3', 't2']) },
   alberti: { name: 'Alberti', hint: 'Klasik dönemin eşlik kalıbı: alt, üst, orta, üst.', time: [4, 4], lh: c8(['r', '5', '3', '5', 'r', '5', '3', '5']), rh: [[0, 2, 'c'], [2, 2, 'c']] },
-  dumtek: { name: 'Düm-tek', hint: 'Sol el "düm", sağ el "tek". Sekizlik sayımla: düm tek, sus, tek, düm, sus, tek, sus.', time: [4, 4], lh: [[0, 1, 'r'], [2, 1, 'r']], rh: [[0.5, 0.5, 'c'], [1.5, 0.5, 'c'], [3, 0.5, 'c']] },
+  dumtek: { name: 'Düm-tek', hint: 'Sol el "düm", sağ el "tek". Sekizlik sayımla: düm, tek, sus, tek, düm, sus, tek, sus.', time: [4, 4], lh: [[0, 1, 'r'], [2, 1, 'r']], rh: [[0.5, 0.5, 'c'], [1.5, 0.5, 'c'], [3, 0.5, 'c']] },
   vals: { name: 'Vals', hint: '1. vuruş bas, 2 ve 3 hafif akor.', time: [3, 4], lh: [[0, 1, 'r']], rh: [[1, 1, 'c'], [2, 1, 'c']] },
   balad68: { name: '6/8 balad', hint: 'İki büyük vuruş; sol el dalga gibi dolaşır.', time: [6, 8], lh: c8(['r', '5', 'o', '5', 'o', '5']), rh: [[0, 1.5, 'c'], [1.5, 1.5, 'c']] },
   aksak98: { name: '9/8 aksak', hint: 'Gruplar 2+2+2+3. Son grup uzun, say: bir-iki, bir-iki, bir-iki, bir-iki-üç.', time: [9, 8], beats: [1, 1, 1, 1.5], lh: [[0, 1, 'r'], [1, 1, '5'], [2, 1, 'r'], [3, 1.5, '5']], rh: [[0.5, 0.5, 'c'], [1.5, 0.5, 'c'], [2.5, 0.5, 'c'], [3.5, 0.5, 'c'], [4, 0.5, 'c']] },
@@ -94,8 +94,10 @@ function bestVoicing(chord, prev, center, lo, hi) {
     if (prev) { score += mids.reduce((a, m) => a + Math.min(...prev.map(p => Math.abs(p - m))), 0) * 1.6; }
     if (score < bs) { bs = score; best = v; }
   }
-  return best || vs[0];
+  return best || fallbackVoicing(chord);
 }
+// Geniş akorlarda (9'lu vb.) aralığa sığan çevrim yoksa kök konumu
+function fallbackVoicing(chord) { return chord.tones.slice(0, 4).map(([d, s]) => chordTone(chord, d, s, 4)); }
 function chordFingers(notes) {
   if (notes.length === 4) return [1, 2, 3, 5];
   if (notes.length === 2) return [1, 5];
