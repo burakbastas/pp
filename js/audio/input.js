@@ -4,29 +4,42 @@ import { ensureAudio } from './piano.js';
 const listeners = new Set();
 export const Inputs = {
   on(fn) { listeners.add(fn); return () => listeners.delete(fn); },
-  emit(type, midi, src) { listeners.forEach(f => f(type, midi, src)); },
-  midi: { supported: !!navigator.requestMIDIAccess, ready: false, devices: [] },
+  emit(type, midi, src, vel) { listeners.forEach(f => f(type, midi, src, vel)); },
+  midi: { supported: !!navigator.requestMIDIAccess, ready: false, devices: [], busy: [] },
 };
 
 export async function connectMIDI() {
   if (!navigator.requestMIDIAccess) return { ok: false, reason: 'unsupported' };
   try {
     const access = await navigator.requestMIDIAccess();
-    const bind = () => {
-      Inputs.midi.devices = [...access.inputs.values()].map(d => d.name);
-      access.inputs.forEach(input => {
+    const bind = async () => {
+      const list = [...access.inputs.values()].filter(d => !/through/i.test(d.name || ''));
+      const opened = await Promise.allSettled(list.map(d => d.open()));
+      const live = list.filter((_, i) => opened[i].status === 'fulfilled');
+      Inputs.midi.devices = live.map(d => d.name);
+      Inputs.midi.busy = list.filter((_, i) => opened[i].status !== 'fulfilled').map(d => d.name);
+      live.forEach(input => {
         input.onmidimessage = (ev) => {
           const [st, n, v] = ev.data; const cmd = st & 0xf0;
-          if (cmd === 0x90 && v > 0) Inputs.emit('down', n, 'midi');
+          if (cmd === 0x90 && v > 0) Inputs.emit('down', n, 'midi', Math.pow(v / 127, 0.8));
           else if (cmd === 0x80 || (cmd === 0x90 && v === 0)) Inputs.emit('up', n, 'midi');
+          else if (cmd === 0xb0 && n === 64) Inputs.emit('pedal', v, 'midi');
         };
       });
       window.dispatchEvent(new CustomEvent('midi-devices'));
     };
-    access.onstatechange = bind; bind();
     Inputs.midi.ready = true;
-    return { ok: true, devices: Inputs.midi.devices };
+    access.onstatechange = bind; await bind();
+    return { ok: true, devices: Inputs.midi.devices, busy: Inputs.midi.busy };
   } catch (e) { return { ok: false, reason: 'denied' }; }
+}
+// İzin daha önce verildiyse sormadan bağlanır
+export async function autoConnectMIDI() {
+  if (!navigator.requestMIDIAccess || !navigator.permissions) return;
+  try {
+    const st = await navigator.permissions.query({ name: 'midi', sysex: false });
+    if (st.state === 'granted') await connectMIDI();
+  } catch (e) { /* tarayıcı bu izni sorgulatmıyor */ }
 }
 
 // Bilgisayar klavyesi: A S D F G H J K beyaz, W E T Y U siyah

@@ -17,7 +17,7 @@ Bilgisayarda denemek için: klasörde `python3 -m http.server` çalıştır, `ht
 
 | Durum | Yöntem |
 |---|---|
-| Dijital piyano, Chrome/Edge/Firefox (bilgisayar, Android) | USB ya da Bluetooth MIDI: Ayarlar > MIDI klavyeyi bağla |
+| Dijital piyano, Chrome/Edge/Firefox (bilgisayar, Android) | USB ya da Bluetooth MIDI: çalışma ekranında **MIDI bağla**. Çalmaya başlayınca **Takip** kipi açılır |
 | iPhone/iPad | Safari MIDI desteklemiyor. Mikrofonu aç ya da “Birlikte” kipini kullan |
 | Akustik piyano | Mikrofon: tek ses ve basit iki seste iyi çalışır |
 | Klavye yok | Ekrandaki tuşlar ya da bilgisayarda A S D F G H J K tuşları (Z ve X oktav değiştirir) |
@@ -52,6 +52,7 @@ Sonra `js/data/curriculum.js` içine bir ders satırı ekle. `sw.js` dosyasında
 
 - Notalar [Mutopia Project](https://www.mutopiaproject.org) LilyPond kaynaklarından dönüştürüldü. BWV Anh. 114, 115, 116 ve BWV 846 kamu malı dizgidir. Schumann Melodie: Philippe Hézaine, CC BY-SA 2.5; bu nota verisini paylaşırsan aynı lisans geçerlidir.
 - Parmak numaraları Melodie dışında bu uygulama için önerilmiştir; öğretmenin başka bir parmak verirse onu kullan.
+- Piyano sesi: Musyng Kite Acoustic Grand, [midi-js-soundfonts](https://github.com/gleitz/midi-js-soundfonts) MP3 çıktısı, CC BY-SA 3.0 (`sounds/piano/KAYNAK.txt`).
 - Alegreya yazı tipleri: SIL Open Font License (`fonts/OFL.txt`).
 - Müzik işaretleri GNU FreeFont/FreeSerif anahatlarından alındı (GPLv3 + font exception).
 - Uygulamada şarkı notası ya da sözü yoktur; yalnız akor kalıpları vardır. Enver Tufan metodunun içeriği uygulamaya alınmamıştır.

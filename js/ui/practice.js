@@ -3,7 +3,7 @@ import { parseScore } from '../notation/parse.js';
 import { Engraved } from '../notation/render.js';
 import { Keyboard } from './keyboard.js';
 import { Player } from './player.js';
-import { ensureAudio, playNote, setVolume } from '../audio/piano.js';
+import { ensureAudio, playNote, setVolume, preloadPiano, pianoState } from '../audio/piano.js';
 import { Inputs, connectMIDI, enableComputerKeys } from '../audio/input.js';
 import { db, save, logMinutes } from '../store.js';
 import { toast, esc } from './dom.js';
@@ -46,13 +46,14 @@ export function mountPractice(root, cfg, { onExit }) {
       </div>
       <div class="dock-row">
         <div class="seg" role="group" aria-label="Kip">
-          <button data-mode="listen">Dinle</button><button data-mode="with">Birlikte</button><button data-mode="wait">Bekle</button>
+          <button data-mode="listen">Dinle</button><button data-mode="with">Birlikte</button><button data-mode="wait">Bekle</button><button data-mode="follow">Takip</button>
         </div>
         <div class="seg hands" role="group" aria-label="El" ${score.staves.rh && score.staves.lh ? '' : 'hidden'}>
           <button data-hand="lh" class="lh-tag">Sol</button><button data-hand="both">İki el</button><button data-hand="rh" class="rh-tag">Sağ</button>
         </div>
       </div>
       <div class="dock-row minor">
+        ${Inputs.midi.supported ? '<button class="chip midi" data-a="midi"></button>' : ''}
         <button class="chip" data-a="loop">Döngü</button>
         <button class="chip" data-a="hint"></button>
         ${cfg.showBreak ? '<button class="chip" data-a="break">Ezberi kır</button>' : ''}
@@ -89,13 +90,30 @@ export function mountPractice(root, cfg, { onExit }) {
   pl.metro = S.metro; pl.countIn = S.countIn; pl.hint = S.hint;
   pl.buildSteps();
   enableComputerKeys(true);
-  const offInput = Inputs.on((t, m, src) => {
-    if (src === 'pc' || (src === 'midi' && S.midiSound)) {
-      if (t === 'down') { ensureAudio(); voices.set(m, playNote(m, 0, null, 0.72)); }
-      else { voices.get(m)?.release?.(); voices.delete(m); }
-    }
+  let pedal = false; const held = new Set();
+  const offInput = Inputs.on((t, m, src, vel) => {
+    if (src !== 'pc' && !(src === 'midi' && S.midiSound)) return;
+    if (t === 'pedal') {
+      pedal = m >= 64;
+      if (!pedal) { held.forEach(k => { voices.get(k)?.release?.(); voices.delete(k); }); held.clear(); }
+    } else if (t === 'down') { ensureAudio(); held.delete(m); voices.get(m)?.release?.(); voices.set(m, playNote(m, 0, null, vel || 0.72)); }
+    else if (pedal) held.add(m);
+    else { voices.get(m)?.release?.(); voices.delete(m); }
   });
+  const offMidi = (() => { const f = () => updateMidi(); addEventListener('midi-devices', f); return () => removeEventListener('midi-devices', f); })();
+  const showLoad = () => {
+    if (pl.state !== 'idle' || pianoState.ready) { if (pianoState.ready && status.dataset.load) { status.textContent = ''; delete status.dataset.load; } return; }
+    status.textContent = `Piyano sesi yükleniyor: ${pianoState.loaded} / ${pianoState.total}`; status.dataset.load = '1';
+  };
+  addEventListener('piano-progress', showLoad);
+  if (!pianoState.ready) preloadPiano(Math.min(36, low), Math.max(84, high));
   let loopPick = false, loopA = null;
+  function updateMidi() {
+    const b = $('[data-a=midi]'); if (!b) return;
+    const d = Inputs.midi.devices, on = Inputs.midi.ready && d.length > 0;
+    b.textContent = on ? 'MIDI: ' + d[0].replace(/\s+\d+$/, '') : Inputs.midi.busy.length ? 'MIDI başka programda' : Inputs.midi.ready ? 'MIDI aygıtı yok' : 'MIDI bağla';
+    b.classList.toggle('on', on);
+  }
   const updateUI = () => {
     root.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === pl.mode));
     root.querySelectorAll('[data-hand]').forEach(b => b.classList.toggle('on', b.dataset.hand === pl.hands));
@@ -110,7 +128,19 @@ export function mountPractice(root, cfg, { onExit }) {
   const disp = (i) => i + 1 + (cfg.firstBar || 0);
   const setPlayIcon = (on) => { const b = $('[data-a=play]'); b.innerHTML = on ? I.stop : I.play; b.setAttribute('aria-label', on ? 'Durdur' : 'Başlat'); };
   function onState(st) {
-    if (st === 'playing' || st === 'waiting') setPlayIcon(true);
+    if (st === 'playing' || st === 'waiting' || st === 'following') setPlayIcon(true);
+    if (st === 'following') status.textContent = 'Çalmaya başla, ben takip ediyorum.';
+    if (st === 'auto-follow') { updateUI(); toast('Takip kipi açıldı.'); }
+    if (st === 'follow-step' && pl.fw && pl.fw.started) {
+      const f = pl.fw, s = pl.steps[Math.min(pl.stepIdx, pl.steps.length - 1)];
+      status.textContent = `Ölçü ${disp(s.notes[0].mi)}${f.bpm ? ', tempo ' + f.bpm : ''}${f.wrong ? ', ' + f.wrong + ' yanlış' : ''}${f.missed ? ', ' + f.missed + ' atlanan' : ''}`;
+    }
+    if (st === 'follow-done') {
+      const r = pl.lastFollow;
+      status.innerHTML = `Doğru nota yüzde ${r.pct}${r.bpm ? ', tempo ' + r.bpm : ''}${r.wrong ? ', ' + r.wrong + ' yanlış' : ''}${r.missed ? ', ' + r.missed + ' atlanan' : ''}. ` + (r.weak.length ? `<button class="link" data-a="weak" data-b="${r.weak[0]}">Ölçü ${disp(r.weak[0])} üzerinde çalış</button>` : 'Yeniden çalarsan baştan izlerim.');
+      if (r.pct >= 95 && !r.wrong && !r.missed) addClean();
+    }
+    if (st === 'timing') { const r = pl.lastTiming; status.textContent = `Zamanında yüzde ${r.pct}. Ortalama ${Math.abs(r.avg)} ms ${r.avg > 0 ? 'geç' : 'erken'}${r.wrong ? ', ' + r.wrong + ' yanlış' : ''}${r.missed ? ', ' + r.missed + ' çalınmadı' : ''}.`; if (r.pct >= 95 && !r.wrong) addClean(); }
     if (st === 'stopped') { setPlayIcon(false); status.textContent = ''; }
     if (st === 'tempo') updateUI();
     if (st === 'progress' || st === 'waiting') {
@@ -118,7 +148,8 @@ export function mountPractice(root, cfg, { onExit }) {
       status.textContent = `${done} / ${pl.steps.length} adım${s.wrong ? `, ${s.wrong} yanlış` : ''}`;
     }
     if (st === 'done') {
-      setPlayIcon(false);
+      setPlayIcon(pl.state !== 'idle');
+      if (pl.mode === 'with') return;
       if (pl.mode === 'wait' && pl.stats) {
         const pct = pl.stats.total ? Math.round(100 * pl.stats.first / pl.stats.total) : 0;
         status.textContent = `İlk denemede doğru: yüzde ${pct}`;
@@ -141,7 +172,8 @@ export function mountPractice(root, cfg, { onExit }) {
     updateUI();
   }
   const setTempo = (d) => { pl.tempo = Math.max(24, Math.min(220, pl.tempo + d)); if (lessonId) { db.tempo[lessonId] = pl.tempo; save(); } updateUI(); if (pl.state === 'playing') { pl.stop(true); pl.play(); } };
-  root.addEventListener('click', (e) => {
+  // Dinleyici bu ekrana bağlı; ders değişince eskisi kalmaz
+  $('.practice').addEventListener('click', (e) => {
     const t = e.target.closest('button, .mh'); if (!t) return;
     if (t.classList.contains('mh')) {
       if (!loopPick) return;
@@ -150,8 +182,10 @@ export function mountPractice(root, cfg, { onExit }) {
       else { loopPick = false; pl.setLoop(loopA, m); loopA = null; updateUI(); }
       return;
     }
-    if (t.dataset.mode) { pl.stop(); pl.mode = t.dataset.mode; updateUI(); if (pl.mode === 'wait') status.textContent = 'Ekrandaki tuşlara bas, MIDI klavye bağla ya da ayarlardan mikrofonu aç.'; else if (pl.mode === 'with') status.textContent = 'Seçili eli sen çal; öteki eli uygulama çalar.'; else status.textContent = ''; return; }
+    if (t.dataset.mode) { ensureAudio(); pl.stop(); pl.mode = t.dataset.mode; updateUI(); if (pl.mode === 'follow') { pl.startFollow(); if (!Inputs.midi.ready) status.textContent = 'MIDI klavyeni bağla ya da ekrandaki tuşlara bas.'; return; } if (pl.mode === 'wait') status.textContent = 'Ekrandaki tuşlara bas, MIDI klavye bağla ya da ayarlardan mikrofonu aç.'; else if (pl.mode === 'with') status.textContent = 'Seçili eli sen çal; öteki eli uygulama çalar.'; else status.textContent = ''; return; }
     if (t.dataset.hand) { pl.stop(); pl.setHands(t.dataset.hand); updateUI(); return; }
+    if (t.dataset.a === 'weak') { const b = +t.dataset.b; pl.setLoop(b, Math.min(score.measures.length - 1, b + 1)); updateUI(); status.textContent = `Ölçü ${disp(b)} döngüde. Yavaş çal, sonra hızlan.`; return; }
+    if (t.dataset.a === 'midi') { doMidi(); return; }
     switch (t.dataset.a) {
       case 'back': cleanup(); onExit(); break;
       case 'how': { const h = $('.p-how'); h.hidden = !h.hidden; t.classList.toggle('on', !h.hidden); relayout(); break; }
@@ -160,7 +194,7 @@ export function mountPractice(root, cfg, { onExit }) {
       case 't-': setTempo(-4); break;
       case 't+': setTempo(4); break;
       case 'clean': addClean(); break;
-      case 'hint': pl.hint = HNEXT[pl.hint]; S.hint = pl.hint; save(); pl.previewStart(); updateUI(); break;
+      case 'hint': pl.hint = HNEXT[pl.hint]; S.hint = pl.hint; save(); if (pl.state === 'following') pl.enterFollow(); else if (pl.state === 'idle') pl.previewStart(); updateUI(); break;
       case 'loop':
         if (pl.loop || loopPick) { loopPick = false; loopA = null; pl.setLoop(null); }
         else { pl.stop(); loopPick = true; }
@@ -168,6 +202,7 @@ export function mountPractice(root, cfg, { onExit }) {
       case 'break': {
         const n = score.measures.length, a = Math.floor(Math.random() * Math.max(1, n - 1)), b = Math.min(n - 1, a + 1);
         pl.hint = 'off'; pl.setLoop(a, b); updateUI();
+        if (pl.state === 'following') pl.enterFollow();
         status.textContent = `Başlangıç: ölçü ${disp(a)}. Önce sol elin ilk notasını söyle.`;
         break;
       }
@@ -175,9 +210,17 @@ export function mountPractice(root, cfg, { onExit }) {
         db.done[lessonId] = true; save(); toast('Ders tamamlandı.'); cleanup(); onExit(); break;
     }
   });
+  async function doMidi() {
+    const r = await connectMIDI();
+    if (!r.ok) toast(r.reason === 'denied' ? 'MIDI izni verilmedi. Adres çubuğundaki izinlerden aç.' : 'Bu tarayıcıda MIDI yok.');
+    else if (r.busy.length && !r.devices.length) toast('MIDI aygıtı başka bir programda açık. O programı kapatıp tekrar dene.');
+    else if (!r.devices.length) toast('MIDI izni tamam ama aygıt görünmüyor. Kabloyu kontrol et.');
+    else toast('MIDI bağlandı: ' + r.devices[0]);
+    updateMidi();
+  }
   function openSheet() {
     const sheet = $('.sheet'); sheet.hidden = false;
-    const midiLine = Inputs.midi.supported ? `<button class="chip" data-s="midi">${Inputs.midi.ready ? (Inputs.midi.devices.length ? 'Bağlı: ' + esc(Inputs.midi.devices.join(', ')) : 'MIDI aygıtı bulunamadı') : 'MIDI klavyeyi bağla'}</button>` : '<p class="muted">Bu tarayıcıda MIDI yok. Chrome, Edge ya da Firefox kullan; iPhone ve iPad’de mikrofonu aç.</p>';
+    const midiLine = Inputs.midi.supported ? `<button class="chip" data-s="midi">${Inputs.midi.ready ? (Inputs.midi.devices.length ? 'Bağlı: ' + esc(Inputs.midi.devices.join(', ')) : 'MIDI aygıtı bulunamadı, tekrar dene') : 'MIDI klavyeyi bağla'}</button>` : '<p class="muted">Bu tarayıcıda MIDI yok. Chrome, Edge ya da Firefox kullan; iPhone ve iPad’de mikrofonu aç.</p>';
     sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-label="Ayarlar">
       <h2>Ayarlar</h2>
       <label class="row"><span>Parmak numaraları</span><input type="checkbox" data-c="fingers" ${S.fingers ? 'checked' : ''}></label>
@@ -186,6 +229,7 @@ export function mountPractice(root, cfg, { onExit }) {
       <label class="row"><span>Baştan bir ölçü say</span><input type="checkbox" data-c="countIn" ${pl.countIn ? 'checked' : ''}></label>
       <label class="row"><span>Tekrarları çal</span><input type="checkbox" data-c="repeats" ${pl.useRepeats ? 'checked' : ''}></label>
       <label class="row"><span>Döngüde tempoyu artır</span><input type="checkbox" data-c="autoUp" ${pl.autoUp ? 'checked' : ''}></label>
+      <label class="row"><span>MIDI'den geleni uygulamada seslendir</span><input type="checkbox" data-c="midiSound" ${S.midiSound ? 'checked' : ''}></label>
       <label class="row"><span>Nota boyu</span><input type="range" min="0.7" max="1.6" step="0.05" value="${S.zoom}" data-r="zoom"></label>
       <label class="row"><span>Ses düzeyi</span><input type="range" min="0" max="1" step="0.05" value="${S.volume}" data-r="vol"></label>
       <div class="row wrap">${midiLine}<button class="chip" data-s="mic">${pl.mic ? 'Mikrofonu kapat' : 'Mikrofonu aç'}</button></div>
@@ -196,12 +240,13 @@ export function mountPractice(root, cfg, { onExit }) {
       if (e.target === sheet) { sheet.hidden = true; return; }
       const b = e.target.closest('[data-s]'); if (!b) return;
       if (b.dataset.s === 'close') sheet.hidden = true;
-      if (b.dataset.s === 'midi') { const r = await connectMIDI(); toast(r.ok ? (r.devices.length ? 'MIDI bağlandı.' : 'MIDI izni verildi ama aygıt görünmüyor.') : 'MIDI bağlanamadı.'); openSheet(); }
+      if (b.dataset.s === 'midi') { await doMidi(); openSheet(); }
       if (b.dataset.s === 'mic') { const on = !pl.mic; const ok = await pl.enableMic(on); if (!ok) toast('Mikrofon izni verilmedi.'); openSheet(); }
     };
     sheet.onchange = (e) => {
       const c = e.target.dataset.c;
       if (c === 'fingers' || c === 'names') { S[c] = e.target.checked; save(); engrave(); pl.previewStart(); }
+      if (c === 'midiSound') { S.midiSound = e.target.checked; save(); if (S.midiSound) ensureAudio(); }
       if (c === 'metro') { pl.metro = S.metro = e.target.checked; save(); }
       if (c === 'countIn') { pl.countIn = S.countIn = e.target.checked; save(); }
       if (c === 'repeats') pl.setRepeats(e.target.checked);
@@ -224,8 +269,8 @@ export function mountPractice(root, cfg, { onExit }) {
   const timeLog = setInterval(() => { if (document.visibilityState === 'visible') logMinutes(5); }, 5000);
   setVolume(S.volume);
   pl.previewStart();
-  updateUI();
+  updateUI(); updateMidi(); showLoad();
   if (cfg.startMode) { pl.mode = cfg.startMode; updateUI(); }
-  function cleanup() { clearTimeout(rT); pl.destroy(); kb.destroy(); ro.disconnect(); offInput(); clearInterval(timeLog); wake?.release?.(); }
+  function cleanup() { clearTimeout(rT); offMidi(); removeEventListener('piano-progress', showLoad); pl.destroy(); kb.destroy(); ro.disconnect(); offInput(); clearInterval(timeLog); wake?.release?.(); }
   return { cleanup, player: pl };
 }

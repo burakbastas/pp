@@ -11,7 +11,8 @@ import { parseScore } from './notation/parse.js';
 import { Engraved } from './notation/render.js';
 import { db, save, streak, today, exportData, importData, resetAll } from './store.js';
 import { esc, toast } from './ui/dom.js';
-import { ensureAudio, playNote } from './audio/piano.js';
+import { ensureAudio, playNote, preloadPiano } from './audio/piano.js';
+import { autoConnectMIDI, connectMIDI, Inputs } from './audio/input.js';
 import { GLYPHS } from './notation/glyphs.js';
 
 const app = document.getElementById('app'), tabs = document.getElementById('tabs');
@@ -259,6 +260,8 @@ function san() {
 function ayar() {
   const S = db.settings;
   app.innerHTML = `<section class="plain"><h1>Ayarlar ve kaynaklar</h1>
+    <h2>MIDI klavye</h2><p>Chrome veya Edge'de klavyeni bağla. Bir nota çalışırken klavyende çalmaya başladığında Takip kipi kendiliğinden açılır.</p>
+    <div class="row-btn"><button class="chip" id="mi">${Inputs.midi.devices.length ? 'Bağlı: ' + esc(Inputs.midi.devices.join(', ')) : 'MIDI klavyeyi bağla'}</button></div>
     <h2>Görünüm</h2><div class="seg" id="th">${[['auto', 'Sistem'], ['light', 'Açık'], ['dark', 'Koyu']].map(([k, t]) => `<button data-th="${k}" class="${S.theme === k ? 'on' : ''}">${t}</button>`).join('')}</div>
     <h2>İlerleme yedeği</h2><p>İlerlemen bu tarayıcıda durur. Telefonla bilgisayar arasında taşımak için yedek al.</p>
     <div class="row-btn"><button class="chip" id="ex">Yedeği indir</button><label class="chip file">Yedeği yükle<input type="file" id="im" accept="application/json" hidden></label><button class="chip warn" id="rs">Her şeyi sıfırla</button></div>
@@ -269,11 +272,13 @@ function ayar() {
       <li><b>Temiz tekrar ve tempo merdiveni:</b> <a href="https://www.structural-learning.com/research-briefings/practise-the-hard-bit" rel="noopener">Duke, Simmons ve Cash (2009)</a>: 17 ileri düzey piyanoda süre değil, hatayı yerinde düzeltmek ertesi günkü sonucu öngördü.</li>
       <li><b>Eşlik kalıpları:</b> <a href="https://pianowithjonny.com/courses/pop-contemporary-piano-accompaniment-patterns-1/" rel="noopener">Piano With Jonny</a> sol el ve sağ el kalıp mantığı; <a href="https://en.wikipedia.org/wiki/Aksak" rel="noopener">2+2+2+3 aksak</a> ve düm-tek (maksum) deseni. Şarkı notası ve sözü yok; yalnız akor kalıpları var.</li>
       <li><b>Şan:</b> <a href="https://instruct.uwo.ca/music/999/lesson1.html" rel="noopener">Western Üniversitesi</a> üçlü ısınma ve yarım ton yürüyüş; <a href="https://artsunit.nsw.edu.au/video/warm-ups-for-your-choir-primary-eclass-3-flexibility-and-blend-1-focus-on-flexibility" rel="noopener">NSW Arts Unit</a> önce bağlı sonra stakato. Öğretmeninin yönlendirmesi her zaman önce gelir.</li>
+      <li><b>Piyano sesi:</b> Musyng Kite Acoustic Grand, <a href="https://github.com/gleitz/midi-js-soundfonts" rel="noopener">midi-js-soundfonts</a> MP3 çıktısı, CC BY-SA 3.0.</li>
       <li><b>Notalar:</b> <a href="https://www.mutopiaproject.org" rel="noopener">Mutopia Project</a> LilyPond kaynaklarından dönüştürüldü. Menuetler ve prelüd kamu malı dizgi; Schumann Melodie CC BY-SA 2.5 (Philippe Hézaine).</li>
       <li><b>Yazı tipi ve işaretler:</b> Alegreya (OFL), FreeSerif müzik işaretleri (GPL + font exception).</li>
     </ul>
     <p class="muted">Enver Tufan’ın kitabının içeriği uygulamaya kopyalanmadı; sayfa numaranı kendin takip edersin.</p>
   </section>`;
+  app.querySelector('#mi').onclick = async () => { const r = await connectMIDI(); toast(r.ok ? (r.devices.length ? 'MIDI bağlandı: ' + r.devices[0] : (r.busy.length ? 'MIDI aygıtı başka bir programda açık.' : 'Aygıt görünmüyor. Kabloyu kontrol et.')) : 'MIDI bağlanamadı.'); ayar(); };
   app.querySelector('#th').onclick = (e) => { const b = e.target.closest('[data-th]'); if (b) { S.theme = b.dataset.th; save(); applyTheme(); ayar(); } };
   app.querySelector('#ex').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([exportData()], { type: 'application/json' })); a.download = 'iki-el-yedek.json'; a.click(); };
   app.querySelector('#im').onchange = async (e) => { try { importData(await e.target.files[0].text()); toast('Yedek yüklendi.'); applyTheme(); route(); } catch (x) { toast('Bu dosya okunamadı.'); } };
@@ -282,4 +287,6 @@ function ayar() {
 function applyTheme() { const t = db.settings.theme; if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.dataset.theme = t; }
 applyTheme();
 route();
+autoConnectMIDI();
+(window.requestIdleCallback || setTimeout)(() => preloadPiano());
 if ('serviceWorker' in navigator && isSecureContext) navigator.serviceWorker.register('sw.js').catch(() => { });

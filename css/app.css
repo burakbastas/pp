@@ -167,10 +167,13 @@ textarea{resize:vertical;font-size:1.15rem;font-weight:700}
 .pips{display:flex;gap:4px}
 .pips i{width:13px;height:10px;border-radius:50%;border:1.5px solid var(--teal);transform:rotate(-20deg)}
 .pips i.f{background:var(--teal)}
-.dock-row{display:flex;gap:8px;justify-content:space-between;align-items:center}
+.dock-row{display:flex;gap:8px;justify-content:space-between;align-items:center;overflow-x:auto;scrollbar-width:none}
+.dock-row::-webkit-scrollbar{display:none}
+.dock-row .seg{flex:none}
+.p-status .link{padding:2px 4px}
 .dock-row.minor{justify-content:flex-start;overflow-x:auto;scrollbar-width:none}
 .dock-row.minor::-webkit-scrollbar{display:none}
-.dock-row .seg button{padding:4px 11px;min-height:34px;font-size:.95rem}
+.dock-row .seg button{padding:4px 9px;min-height:34px;font-size:.95rem}
 .sheet{position:absolute;inset:0;background:rgb(13 20 51 / .44);display:flex;align-items:flex-end;justify-content:center;z-index:9}
 .sheet[hidden]{display:none}
 .sheet-card{background:var(--paper);width:min(460px,100%);border-radius:18px 18px 0 0;padding:18px;max-height:88%;overflow:auto}
@@ -261,6 +264,7 @@ textarea{resize:vertical;font-size:1.15rem;font-weight:700}
   .dock-main{flex:none}.dock-row{flex:none}.dock-row.minor{flex:1;justify-content:flex-end}
   .clean-btn{margin-left:6px}
 }
+@media (max-width:389px){.dock-row .seg button{padding:4px 6px;font-size:.9rem}.dock-row{gap:4px}}
 /* Yatay telefon */
 @media (max-height:520px) and (orientation:landscape){
   .p-dock{flex-direction:row;align-items:center;gap:8px;overflow-x:auto;padding:2px 8px;scrollbar-width:none}

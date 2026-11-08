@@ -1,0 +1,5 @@
+Bu klasördeki MP3 dosyaları Musyng Kite soundfont'undaki Acoustic Grand Piano sesidir.
+Soundfont: Musyng Kite (yazar: Sarcyan)
+MP3 çıktısı: https://github.com/gleitz/midi-js-soundfonts (MusyngKite/acoustic_grand_piano-mp3)
+Lisans: Creative Commons Attribution Share-Alike 3.0 (https://creativecommons.org/licenses/by-sa/3.0/)
+Dosyalar değiştirilmeden kullanılmıştır.

@@ -425,6 +425,7 @@ export class Engraved {
     this._act = now;
   }
   markResult(key, cls) { (this.evMap.get(key) || []).forEach(g => g.classList.add(cls)); }
+  clearMark(key) { (this.evMap.get(key) || []).forEach(g => g.classList.remove('good', 'bad')); }
   clearMarks() { this.svg.querySelectorAll('.good,.bad').forEach(g => g.classList.remove('good', 'bad')); }
   setCursor(mi, t) {
     const p = this.pos[mi]; if (!p) { this.cursor.setAttribute('x', -20); return; }

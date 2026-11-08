@@ -36,17 +36,18 @@ export class Player {
     });
     this.steps = [...map.values()].sort((a, b) => a.at - b.at);
   }
-  setHands(h) { this.hands = h; this.buildSteps(); this.previewStart(); }
+  setHands(h) { this.hands = h; this.buildSteps(); this.previewStart(); this.rearm(); }
+  rearm() { if (this.mode === 'follow' && this.state === 'idle') this.startFollow(); }
   setLoop(a, b) {
     this.stop();
     this.loop = a == null ? null : { a: Math.min(a, b), b: Math.max(a, b) };
     this.eng.setLoop(this.loop?.a, this.loop?.b);
-    this.rebuild(); this.previewStart();
+    this.rebuild(); this.previewStart(); this.rearm();
   }
-  setRepeats(v) { this.stop(); this.useRepeats = v; this.rebuild(); this.previewStart(); }
+  setRepeats(v) { this.stop(); this.useRepeats = v; this.rebuild(); this.previewStart(); this.rearm(); }
   spq() { return 60 / this.tempo; }
   previewStart() {
-    this.stepIdx = 0; this.eng.clearMarks?.();
+    this.stepIdx = 0; if (!this.keepMarks) this.eng.clearMarks?.();
     if (!this.notes.length) return;
     const p = this.timeline.pos[0];
     this.eng.setCursor(p.mi, 0);
@@ -65,6 +66,9 @@ export class Player {
     this.stop(true);
     this.stats = { hits: 0, wrong: 0, first: 0, total: this.steps.length, t0: performance.now() };
     if (this.mode === 'wait') { this.startWait(); return; }
+    if (this.mode === 'follow') { this.startFollow(); return; }
+    this.timing = this.mode === 'with' ? { used: new Set(), errs: [], wrong: 0 } : null;
+    this.eng.clearMarks();
     const ctx = audioCtx(), spq = this.spq(), [n, d] = this.score.time;
     const beat = 4 / d;
     const lead = 0.12;
@@ -119,15 +123,19 @@ export class Player {
   finishPass() {
     clearInterval(this.timer); this.timer = null;
     if (this.loop) {
+      this.reportTiming();
       this.onState('loop');
       if (this.autoUp) this.tempo = Math.min(this.tempo + 4, this.score.tempoMax || 200);
       this.spqNow = this.spq();
       this.onState('tempo');
       this.t0 = audioCtx().currentTime + 0.05; this.nextIdx = 0; this.nextClick = 0;
+      if (this.timing) { this.timing = { used: new Set(), errs: [], wrong: 0 }; this.eng.clearMarks(); }
       this.timer = setInterval(() => this.pump(), 30);
       return;
     }
-    this.stop(); this.onState('done');
+    this.keepMarks = !!this.timing;
+    this.stop(); this.keepMarks = false;
+    this.onState('done'); this.reportTiming();
   }
   frame() {
     if (this.state !== 'playing') return;
@@ -160,7 +168,7 @@ export class Player {
   }
   stop(silent) {
     clearInterval(this.timer); this.timer = null; cancelAnimationFrame(this.raf); clearTimeout(this.loopTimer);
-    if (this.state === 'waiting' && this.mic) this.mic.setExpected([]);
+    if ((this.state === 'waiting' || this.state === 'following') && this.mic) this.mic.setExpected([]);
     const was = this.state; this.state = 'idle'; stopAll();
     if (!silent) { this.eng.setCursor(-1, 0); this.eng.setActive(new Set()); this.kb?.clearMarks(); this._sys = null; if (was !== 'idle') this.onState('stopped'); this.previewStart(); }
   }
@@ -203,9 +211,14 @@ export class Player {
     this.onState('done');
     if (this.loop) this.loopTimer = setTimeout(() => { this.stats = { hits: 0, wrong: 0, first: 0, total: this.steps.length }; this.startWait(); }, 900);
   }
-  input(type, midi) {
+  input(type, midi, src) {
+    if (type === 'pedal') return;
     if (type === 'down') this.kb?.pressed(midi, true);
     if (type === 'up') { this.kb?.pressed(midi, false); return; }
+    // Dinle kipindeyken MIDI'den çalmaya başlanırsa takip kendiliğinden açılır
+    if (src === 'midi' && this.state === 'idle' && this.mode === 'listen') { this.mode = 'follow'; this.startFollow(); this.onState('auto-follow'); }
+    if (this.state === 'following') { this.followNote(midi); return; }
+    if (this.state === 'playing' && this.timing) { this.timedHit(midi); return; }
     if (this.state !== 'waiting') return;
     if (this.pending.has(midi)) {
       this.pending.delete(midi); this.kb?.flash(midi, 'okk');
@@ -216,14 +229,182 @@ export class Player {
       this.onState('progress');
     }
   }
-  micHit(list) { if (this.state === 'waiting') list.forEach(m => this.input('down', m, 'mic')); }
+  // --- Birlikte kipi: metronoma göre zamanlama ölçümü
+  timedHit(m) {
+    const ctx = audioCtx(), spq = this.spqNow, T = this.timing;
+    const nowQ = (ctx.currentTime - (ctx.outputLatency || 0) - this.t0) / spq;
+    let best = null, gap = 1e9;
+    for (const n of this.notes) {
+      if (n.at > nowQ + 1.5) break;
+      if (n.tiedIn || !this.active(n) || n.midi !== m || T.used.has(n)) continue;
+      const d = Math.abs(n.at - nowQ); if (d < gap) { gap = d; best = n; }
+    }
+    const err = best ? (nowQ - best.at) * spq * 1000 : null;
+    if (!best || Math.abs(err) > Math.min(320, spq * 550)) { T.wrong++; this.kb?.flash(m, 'err'); return; }
+    T.used.add(best); T.errs.push(err);
+    this.eng.markResult(best.key, Math.abs(err) <= 120 ? 'good' : 'bad');
+    this.kb?.flash(m, 'okk');
+  }
+  reportTiming() {
+    const T = this.timing;
+    if (!T || !T.errs.length) return;
+    const total = this.notes.filter(n => !n.tiedIn && this.active(n)).length;
+    const onTime = T.errs.filter(e => Math.abs(e) <= 120).length;
+    this.lastTiming = { pct: Math.round(100 * onTime / Math.max(1, total)), avg: Math.round(T.errs.reduce((a, b) => a + b, 0) / T.errs.length), wrong: T.wrong, missed: total - T.errs.length };
+    this.onState('timing');
+  }
+  // --- Takip kipi: çalınan notaları porte üzerinde izler
+  startFollow() {
+    this.stop(true);
+    this.eng.clearMarks();
+    this.state = 'following';
+    this.resetFollow(false);
+    this.onState('following');
+    this.enterFollow();
+    cancelAnimationFrame(this.raf);
+    this.raf = requestAnimationFrame(() => this.frameFollow());
+  }
+  resetFollow(keepMarks) {
+    this.stepIdx = 0;
+    this.pend = this.steps.map(s => new Set(s.notes.map(n => n.midi)));
+    this.fw = { hits: 0, missed: 0, wrong: 0, bars: new Map(), wrongBars: [], hist: [], streak: 0, started: false, log: [], bpm: null, spq: null, lastAt: null, lastWall: null, fresh: keepMarks, acc: new Set() };
+  }
+  barOf(i) { const s = this.steps[i]; return s ? s.notes[0].mi : 0; }
+  addBar(i, by = 1) { const b = this.barOf(i), f = this.fw; f.bars.set(b, (f.bars.get(b) || 0) + by); }
+  posOf(at) { const P = this.timeline.pos; return P.find(p => at >= p.start - 1e-6 && at < p.start + p.len - 1e-6) || P[P.length - 1]; }
+  enterFollow() {
+    const s = this.steps[this.stepIdx]; if (!s) return;
+    this.showStep(s);
+    const midis = s.notes.map(n => n.midi);
+    this.kb?.focusRange(Math.min(...midis), Math.max(...midis));
+    if (this.mic) this.mic.setExpected([...this.pend[this.stepIdx]]);
+    this.onState('follow-step');
+  }
+  frameFollow() {
+    if (this.state !== 'following') return;
+    const s = this.steps[Math.min(this.stepIdx, this.steps.length - 1)], f = this.fw;
+    if (s) {
+      // imleç senin temponla ilerler ama beklenen notayı geçmez
+      let a = s.at;
+      if (f.lastAt != null && f.spq) a = Math.min(s.at, Math.max(f.lastAt, f.lastAt + (performance.now() - f.lastWall) / f.spq));
+      const p = this.posOf(a);
+      this.eng.setCursor(p.mi, a - p.start); this.scrollTo(p.mi);
+    }
+    this.raf = requestAnimationFrame(() => this.frameFollow());
+  }
+  noteTime(i) {
+    const f = this.fw, now = performance.now(), s = this.steps[i];
+    if (f.lastWall != null && now - f.lastWall > 5000) f.log = [];
+    f.log.push({ at: s.at, wall: now }); if (f.log.length > 8) f.log.shift();
+    f.lastAt = s.at; f.lastWall = now;
+    const a = f.log[0], b = f.log[f.log.length - 1];
+    if (b.at - a.at >= 1 && b.wall > a.wall) { f.spq = Math.max(250, Math.min(3000, (b.wall - a.wall) / (b.at - a.at))); f.bpm = Math.round(60000 / f.spq); }
+  }
+  accompany(i) {
+    if (this.hands === 'both') return;
+    ensureAudio();
+    const s = this.steps[i], nx = this.steps[i + 1], end = nx ? nx.at : this.timeline.total;
+    const spq = (this.fw.spq || this.spq() * 1000) / 1000, t = audioCtx().currentTime + 0.005;
+    for (const n of this.notes) {
+      if (n.at >= end - 1e-6) break;
+      if (this.active(n) || n.tiedIn || n.at < s.at - 1e-6) continue;
+      playNote(n.midi, t + (n.at - s.at) * spq, n.d * spq, 0.5);
+    }
+  }
+  followHit(i, m) {
+    const f = this.fw, s = this.steps[i];
+    this.pend[i].delete(m); f.hits++; f.streak = 0; f.started = true;
+    this.kb?.flash(m, 'okk');
+    s.notes.filter(n => n.midi === m).forEach(n => this.eng.markResult(n.key, 'good'));
+    if (!f.acc.has(i)) { f.acc.add(i); this.noteTime(i); this.accompany(i); }
+    if (this.pend[i].size === 0) { this.stepIdx = i + 1; if (this.stepIdx >= this.steps.length) this.finishFollow(); else this.enterFollow(); }
+    else if (this.stepIdx !== i) { this.stepIdx = i; this.enterFollow(); }
+    else if (this.mic) this.mic.setExpected([...this.pend[i]]);
+  }
+  markMissed(i) {
+    const f = this.fw, s = this.steps[i];
+    this.pend[i].forEach(m => { f.missed++; this.addBar(i); s.notes.filter(n => n.midi === m).forEach(n => this.eng.markResult(n.key, 'bad')); });
+    this.pend[i].clear();
+  }
+  followNote(m) {
+    const f = this.fw, n = this.steps.length; if (!n) return;
+    if (f.fresh) { f.fresh = false; this.eng.clearMarks(); this.onState('follow-step'); }
+    f.hist.push(m); if (f.hist.length > 8) f.hist.shift();
+    const i = this.stepIdx;
+    if (i < n && this.pend[i].has(m)) { this.followHit(i, m); return; }
+    if (i + 1 < n && this.pend[i + 1].has(m)) {
+      if (f.started) this.markMissed(i); else this.pend[i].clear();
+      this.followHit(i + 1, m); return;
+    }
+    // tekrar ya da düzeltme: son iki adımdaki nota ceza almaz
+    if ([i - 1, i - 2].some(x => x >= 0 && this.steps[x].notes.some(o => o.midi === m))) return;
+    // süsleme: işaretli notanın çevresindeki sesler serbest
+    if ([i, i - 1].some(x => x >= 0 && x < n && this.steps[x].notes.some(o => o.ev.orn && Math.abs(o.midi - m) <= 2))) return;
+    if (f.started) {
+      f.wrong++; f.streak++; this.addBar(Math.min(i, n - 1)); f.wrongBars.push(this.barOf(Math.min(i, n - 1)));
+      this.kb?.flash(m, 'err');
+      if (this.hint === 'error') this.showHintNow();
+      this.onState('follow-step');
+    }
+    this.relocate();
+  }
+  // Son çalınan üç nota notanın başka yerine uyuyorsa imleci oraya taşır
+  relocate() {
+    const f = this.fw, K = 3, n = this.steps.length;
+    if (f.hist.length < K) return;
+    const last = f.hist.slice(-K);
+    const has = (j, m) => this.steps[j].notes.some(o => o.midi === m);
+    const cand = [];
+    for (let j = 0; j < n; j++) {
+      if (!has(j, last[K - 1])) continue;
+      let p = j, ok = true, used = new Set([last[K - 1]]);
+      for (let h = K - 2; h >= 0; h--) {
+        const m = last[h];
+        if (has(p, m) && !used.has(m)) { used.add(m); continue; }
+        if (p > 0 && has(p - 1, m)) { p--; used = new Set([m]); continue; }
+        ok = false; break;
+      }
+      if (ok) cand.push(j);
+    }
+    if (!cand.length) return;
+    if (cand.length > 1 && f.started && f.streak < 4) return;
+    const i = this.stepIdx;
+    cand.sort((a, b) => (a >= i ? a - i : (i - a) * 2) - (b >= i ? b - i : (i - b) * 2));
+    this.jumpTo(cand[0], last);
+  }
+  jumpTo(j, last) {
+    const f = this.fw, i = this.stepIdx;
+    if (f.started) { for (let w = 0; w < f.streak && f.wrongBars.length; w++) { f.wrong--; const b = f.wrongBars.pop(); f.bars.set(b, Math.max(0, (f.bars.get(b) || 1) - 1)); } }
+    f.streak = 0; f.log = []; f.lastAt = null; f.lastWall = null;
+    if (j > i) {
+      for (let k = i; k < j; k++) { if (f.started && j - i <= 8) this.markMissed(k); else this.pend[k].clear(); }
+    } else {
+      for (let k = j; k <= Math.min(i, this.steps.length - 1); k++) {
+        this.pend[k] = new Set(this.steps[k].notes.map(o => o.midi));
+        this.steps[k].notes.forEach(o => this.eng.clearMark(o.key));
+        f.acc.delete(k);
+      }
+    }
+    this.stepIdx = j;
+    const hit = last[last.length - 1];
+    this.followHit(j, hit);
+  }
+  finishFollow() {
+    const f = this.fw;
+    const weak = [...f.bars.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([b]) => b);
+    this.lastFollow = { pct: Math.round(100 * f.hits / Math.max(1, f.hits + f.missed + f.wrong)), wrong: f.wrong, missed: f.missed, bpm: f.bpm, weak };
+    this.resetFollow(true);
+    this.showStep(this.steps[0]);
+    this.onState('follow-done');
+  }
+  micHit(list) { if (this.state === 'waiting' || this.state === 'following') list.forEach(m => this.input('down', m, 'mic')); }
   showHintNow() {
     const s = this.steps[this.stepIdx]; if (!s) return;
     const marks = new Map(); s.notes.forEach(n => marks.set(n.midi, { hand: n.staff, finger: n.finger })); this.kb?.setMarks(marks);
   }
   async enableMic(on) {
     const { MicListener } = await import('../audio/input.js');
-    if (on) { const m = new MicListener(); const ok = await m.start(); if (!ok) return false; m.onHit = (l) => this.micHit(l); this.mic = m; if (this.state === 'waiting') this.enterStep(); return true; }
+    if (on) { const m = new MicListener(); const ok = await m.start(); if (!ok) return false; m.onHit = (l) => this.micHit(l); this.mic = m; if (this.state === 'waiting') this.enterStep(); if (this.state === 'following') this.enterFollow(); return true; }
     this.mic?.stop(); this.mic = null; return true;
   }
 }

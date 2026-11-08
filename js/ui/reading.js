@@ -34,7 +34,12 @@ export function mountReading(root, levelId, { onExit, lessonId }) {
     onUp: (m) => { voices.get(m)?.release?.(); voices.delete(m); },
   });
   enableComputerKeys(true);
-  const off = Inputs.on((t, m) => { if (t === 'down') tryKey(m); });
+  const off = Inputs.on((t, m, src, vel) => {
+    if (t === 'pedal') return;
+    if (src === 'midi') kb.pressed(m, t === 'down');
+    if (src === 'midi' && db.settings.midiSound) { if (t === 'down') { ensureAudio(); voices.set(m, playNote(m, 0, null, vel || 0.7)); } else { voices.get(m)?.release?.(); voices.delete(m); } }
+    if (t === 'down') tryKey(m);
+  });
   const noteHost = $('.r-note');
   function weight(p) { const s = stats[p.midi] || { n: 0, e: 0, ms: 0 }; const err = s.n ? s.e / s.n : 0.5; const slow = s.n ? Math.min(1.5, s.ms / s.n / 2500) : 1; return 0.35 + err * 3 + slow; }
   function pick() {
@@ -111,7 +116,7 @@ export function mountReading(root, levelId, { onExit, lessonId }) {
       <div class="r-actions"><button class="primary" data-a="again">Bir tur daha</button><button class="txt-btn" data-a="back">Bitir</button></div></div>`;
     $('.r-names').hidden = true; kb.clearMarks();
   }
-  root.onclick = (e) => {
+  $('.reader').onclick = (e) => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.a === 'back') { cleanup(); onExit(); }
     if (b.dataset.a === 'again') { cleanup(); mountReading(root, levelId, { onExit, lessonId }); }
