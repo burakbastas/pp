@@ -2,7 +2,7 @@
 const KEY = 'piyano-okulu-v1';
 const DEF = {
   prog: {}, manual: {}, tempo: {}, howSeen: {}, last: null,
-  settings: { zoom: 1, volume: 0.85, names: false, fingers: true, metro: true, midiSound: false, hint: 'always' },
+  settings: { zoom: 1, volume: 0.85, names: false, fingers: true, metro: true, midiSound: false, hint: 'always', piano: 'musyng' },
 };
 function load() {
   try {
@@ -18,7 +18,7 @@ export const PASS = 90;
 // Bir bölümde hangi el geçilmeli
 export const required = (item) => item.kind === 'fa' ? 'lh' : item.kind === 'finger' ? item.hand : 'both';
 export const score = (id, sec, hand) => db.prog[id]?.[sec]?.[hand] ?? null;
-export const secDone = (item, sec) => (score(item.id, sec, required(item)) ?? 0) >= PASS;
+export const secDone = (item, sec) => (score(item.id, 'all', required(item)) ?? 0) >= PASS || (score(item.id, sec, required(item)) ?? 0) >= PASS;
 export function isDone(item) { return !!db.manual[item.id] || item.sections.every((_, i) => secDone(item, i)); }
 export const isStarted = (item) => !!db.prog[item.id] && Object.keys(db.prog[item.id]).length > 0;
 export const itemState = (item) => isDone(item) ? 'done' : isStarted(item) ? 'some' : 'none';

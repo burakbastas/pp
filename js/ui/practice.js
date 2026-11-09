@@ -3,7 +3,8 @@ import { parseScore } from '../notation/parse.js';
 import { Engraved } from '../notation/render.js';
 import { Player } from './player.js';
 import { Keyboard } from './keyboard.js';
-import { ensureAudio, playNote, setVolume, preloadPiano, pianoState } from '../audio/piano.js';
+import { ensureAudio, playNote, setVolume, preloadPiano, pianoState, setPiano } from '../audio/piano.js';
+import { PIANOS } from '../audio/pianos.js';
 import { Inputs, connectMIDI, enableComputerKeys } from '../audio/input.js';
 import { db, save, record, score as bestOf, required, PASS, setManual, isDone } from '../store.js';
 import { esc, toast } from './dom.js';
@@ -26,7 +27,9 @@ export function sectionDef(n, [a, b], title) {
 }
 
 export function mountPractice(root, { item, notes, sec, backHref, nextItemHref, sub }) {
-  const def = sectionDef(notes, item.sections[sec], item.title);
+  const whole = sec === 'all', range = whole ? [0, Math.max(notes.rh?.length || 0, notes.lh?.length || 0)] : item.sections[sec];
+  const allLabel = { eser: 'Tüm eser', etut: 'Tüm etüt', alistirma: 'Tüm alıştırma' }[item.group] || 'Tümü';
+  const def = sectionDef(notes, range, item.title);
   const s = parseScore(def);
   const S = db.settings;
   const both = s.staves.rh && s.staves.lh;
@@ -51,10 +54,10 @@ export function mountPractice(root, { item, notes, sec, backHref, nextItemHref, 
     <div class="pr-how" ${showHowFirst ? '' : 'hidden'}>
       ${item.why ? `<p>${esc(item.why)}</p>` : ''}${howList}${item.note ? `<p class="m">${esc(item.note)}</p>` : ''}
     </div>
-    ${item.sections.length > 1 ? `<nav class="secs" aria-label="Bölümler">${item.sections.map(([a, b], i) => {
+    ${item.sections.length > 1 ? `<nav class="secs" aria-label="Bölümler"><div class="secs-r">${item.sections.map(([a, b], i) => {
     const r = (bestOf(item.id, i, need) ?? 0) >= PASS;
     return `<a href="#/c/${item.id}/${i}" class="${i === sec ? 'on' : ''} ${r ? 'd' : ''}" aria-label="Ölçü ${a + 1} ile ${b} arası">${a + 1}–${b}</a>`;
-  }).join('')}</nav>` : ''}
+  }).join('')}</div><a href="#/c/${item.id}/tum" class="all ${whole ? 'on' : ''} ${(bestOf(item.id, 'all', need) ?? 0) >= PASS ? 'd' : ''}">${allLabel}</a></nav>` : ''}
     <div class="pr-score"><div class="score-host"></div></div>
     <p class="pr-status" role="status"></p>
     <div class="pr-dock">
@@ -111,7 +114,7 @@ export function mountPractice(root, { item, notes, sec, backHref, nextItemHref, 
     status.textContent = `Piyano sesi yükleniyor: ${pianoState.loaded} / ${pianoState.total}`; status.dataset.load = '1';
   };
   addEventListener('piano-progress', showLoad);
-  if (!pianoState.ready) preloadPiano(Math.min(36, low), Math.max(84, high));
+  preloadPiano(Math.min(36, low), Math.max(84, high));
 
   let loopPick = false, loopA = null;
   const disp = (i) => i + 1 + (def.firstBar || 0);
@@ -147,7 +150,7 @@ export function mountPractice(root, { item, notes, sec, backHref, nextItemHref, 
       const nx = hand === 'lh' ? 'rh' : 'both';
       return { label: `${HAND[nx]} ile devam et`, run: () => { pl.stop(); pl.setHands(nx); updateUI(); } };
     }
-    if (sec < item.sections.length - 1) return { label: 'Sonraki bölüm', run: () => { location.hash = `#/c/${item.id}/${sec + 1}`; } };
+    if (!whole && sec < item.sections.length - 1) return { label: 'Sonraki bölüm', run: () => { location.hash = `#/c/${item.id}/${sec + 1}`; } };
     if (nextItemHref) return { label: 'Sonraki çalışma', run: () => { location.hash = nextItemHref; } };
     return { label: 'Üniteye dön', run: () => { location.hash = backHref; } };
   }
@@ -161,7 +164,7 @@ export function mountPractice(root, { item, notes, sec, backHref, nextItemHref, 
     const sheet = $('.sheet'); sheet.hidden = false;
     sheet.innerHTML = `<div class="sheet-card res" role="dialog" aria-label="Sonuç">
       <p class="big">Yüzde ${r.pct}</p>
-      <p>${HAND[hand]}, ${esc(item.sections.length > 1 ? `ölçü ${item.sections[sec][0] + 1}–${item.sections[sec][1]}` : item.title)}${r.bpm ? `, tempon ${r.bpm}` : ''}${parts.length ? `. ${parts.join(', ')}` : ''}.</p>
+      <p>${HAND[hand]}, ${esc(whole ? allLabel : item.sections.length > 1 ? `ölçü ${range[0] + 1}–${range[1]}` : item.title)}${r.bpm ? `, tempon ${r.bpm}` : ''}${parts.length ? `. ${parts.join(', ')}` : ''}.</p>
       <p class="m">${pass ? (isDone(item) ? 'Bu çalışma tamamlandı.' : 'Bu el geçti.') : `Geçmek için yüzde ${PASS} gerekir. Tempoyu düşür ya da zor ölçüyü döngüye al.`}</p>
       ${nx ? `<button class="pri" data-r="next">${esc(nx.label)}</button>` : ''}
       <button class="sec" data-r="again">Yeniden çal</button>
@@ -196,6 +199,7 @@ export function mountPractice(root, { item, notes, sec, backHref, nextItemHref, 
     const sheet = $('.sheet'); sheet.hidden = false;
     sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-label="Görünüm ve ses">
       <label class="row">Nota boyutu<input type="range" min="0.75" max="1.5" step="0.05" value="${S.zoom}" data-s="zoom"></label>
+      <label class="row">Piyano sesi<select data-s="piano">${PIANOS.map(p => `<option value="${p.id}" ${p.id === S.piano ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
       <label class="row">Ses<input type="range" min="0" max="1" step="0.05" value="${S.volume}" data-s="volume"></label>
       <label class="row">Nota adları<input type="checkbox" data-s="names" ${S.names ? 'checked' : ''}></label>
       <label class="row">Parmak numaraları<input type="checkbox" data-s="fingers" ${S.fingers ? 'checked' : ''}></label>
@@ -211,6 +215,7 @@ export function mountPractice(root, { item, notes, sec, backHref, nextItemHref, 
     };
     sheet.oninput = (e) => {
       const k = e.target.dataset.s; if (!k) return;
+      if (k === 'piano') { S.piano = e.target.value; save(); setPiano(S.piano); return; }
       if (e.target.type === 'checkbox') { S[k] = e.target.checked; save(); if (k === 'metro') pl.metro = S[k]; if (k === 'names' || k === 'fingers') relayout(); return; }
       S[k] = +e.target.value; save();
       if (k === 'zoom') relayout();

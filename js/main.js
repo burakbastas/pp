@@ -4,7 +4,8 @@ import { db, save, itemState, isDone, isStarted, required, exportData, importDat
 import { mountPractice } from './ui/practice.js';
 import { GLYPHS } from './notation/glyphs.js';
 import { autoConnectMIDI, connectMIDI, Inputs } from './audio/input.js';
-import { installAudioUnlock } from './audio/piano.js';
+import { installAudioUnlock, setPiano, previewPiano } from './audio/piano.js';
+import { PIANOS } from './audio/pianos.js';
 import { esc, toast } from './ui/dom.js';
 
 const app = document.getElementById('app');
@@ -60,6 +61,26 @@ function tree() {
 const ST_MARK = (s) => `<span class="st ${s}" aria-label="${s === 'done' ? 'Tamamlandı' : s === 'some' ? 'Başlandı' : 'Başlanmadı'}"></span>`;
 const HANDS = [['rh', 'Sağ el'], ['lh', 'Sol el'], ['both', 'İki el']];
 const SKILLS = [['bes', 'Bağımsızlık'], ['gecis', 'Geçiş'], ['atlama', 'Atlama']];
+// Ünite ve aşama sayfalarının gezinmesi: telefonda altta yatay, geniş ekranda solda dikey klavye
+const BLACK_AT = { 2: 1, 4: 2, 7: 4, 9: 5, 11: 6 };
+const TREE_ICON = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 3h14v14H3zM3 8h8M3 12.500h8"/></svg>';
+const GEAR_ICON = '<svg viewBox="0 0 22 22" aria-hidden="true"><path d="M3 6h9m5 0h2M3 16h2m5 0h9"/><circle cx="14.500" cy="6" r="2.400"/><circle cx="7.500" cy="16" r="2.400"/></svg>';
+function keyNav({ list, cur, hrefOf, doneOf, label, home, other }) {
+  const cls = (n) => `${n === cur ? 'on' : ''} ${doneOf(n) ? 'd' : ''}`;
+  const cu = (n) => n === cur ? 'aria-current="page"' : '';
+  const whites = list.filter(x => !BLACK_AT[x.n]).map(x => `<a class="dk-w ${cls(x.n)}" href="${hrefOf(x.n)}" ${cu(x.n)} aria-label="${label} ${x.n}: ${esc(x.title)}">${x.n}</a>`).join('');
+  const blacks = list.filter(x => BLACK_AT[x.n]).map(x => `<a class="dk-b ${cls(x.n)}" style="--at:${BLACK_AT[x.n]}" href="${hrefOf(x.n)}" ${cu(x.n)} aria-label="${label} ${x.n}: ${esc(x.title)}">${x.n}</a>`).join('');
+  const rail = `<nav class="rail" aria-label="${label}ler">
+    <a class="rail-b" href="#/">Piyano Okulu</a>
+    <div class="rail-keys">${list.map(x => `<a class="rk ${BLACK_AT[x.n] ? 'b' : ''} ${cls(x.n)}" href="${hrefOf(x.n)}" ${cu(x.n)}><span class="rk-k"><i>${x.n}</i></span><span class="rk-t">${esc(x.title)}</span></a>`).join('')}</div>
+    <div class="rail-f"><a href="${home[0]}">${esc(home[1])}</a><a href="${other[0]}">${esc(other[1])}</a><a class="ic" href="#/ayar" aria-label="Ayarlar">${GEAR_ICON}</a></div>
+  </nav>`;
+  const dock = `<nav class="dock" aria-label="${label}ler">
+    <div class="dk-row"><a class="t" href="${home[0]}">${TREE_ICON}${esc(home[1])}</a><a class="r" href="${other[0]}">${esc(other[1])}</a><a class="g" href="#/ayar" aria-label="Ayarlar">${GEAR_ICON}</a></div>
+    <div class="dk-keys">${whites}${blacks}</div>
+  </nav>`;
+  return { rail, dock };
+}
 function unit(n) {
   const u = UNITS[n - 1]; if (!u) return go('#/');
   const fingers = u.groups.parmak.map(x => ITEMS.get(x.id));
@@ -67,20 +88,21 @@ function unit(n) {
   const list = (g) => u.groups[g].map(x => ITEMS.get(x.id)).map(it => `<li><a href="${href(it)}">${ST_MARK(itemState(it))}
     <span class="lt"><b>${esc(it.title)}</b><small>${esc(it.by)}, ${esc(it.work)}${it.rcm ? `. RCM ${esc(it.rcm)}` : ''}</small><em>${esc(it.why)}</em></span>
     ${it.sections.length > 1 ? `<span class="n">${it.sections.length} bölüm</span>` : ''}</a></li>`).join('');
-  app.innerHTML = `${NAV('tree')}<main class="page unit">
-    <a class="crumb" href="#/">Eğitim ağacı</a>
+  const nav = keyNav({ list: UNITS.map(x => ({ n: x.n, title: x.title })), cur: n, hrefOf: (k) => `#/u/${k}`, doneOf: (k) => unitDone(UNITS[k - 1]) === unitItems(UNITS[k - 1]).length, label: 'Ünite', home: ['#/', 'Eğitim ağacı'], other: ['#/fa', 'Fa anahtarı'] });
+  app.innerHTML = `<div class="withkeys">${nav.rail}<main class="page unit">
     <h1><span>${n}</span>${esc(u.title)}</h1>
     <p class="meta">${esc(u.code)}, ${esc(u.stage.toLocaleLowerCase('tr'))}. ${unitDone(u)} / ${unitItems(u).length} tamamlandı.</p>
     <p class="aim">${esc(u.aim)}</p>
+    <div class="ugrid">
     <section><h2>Parmak alıştırmaları</h2>
       <div class="matrix" role="table" aria-label="El ve beceri">
         <span></span>${SKILLS.map(([, t]) => `<span class="ch">${t}</span>`).join('')}
         ${HANDS.map(([h, t]) => `<span class="rh-l">${t}</span>${SKILLS.map(([sk]) => cell(h, sk)).join('')}`).join('')}
       </div>
     </section>
-    ${GROUPS.slice(1).map(([g, t]) => `<section><h2>${t}</h2><ul class="ls">${list(g)}</ul></section>`).join('')}
-    <nav class="pn">${n > 1 ? `<a href="#/u/${n - 1}">Önceki ünite</a>` : '<span></span>'}${n < UNITS.length ? `<a href="#/u/${n + 1}">Sonraki ünite</a>` : ''}</nav>
-  </main>`;
+    <div>${GROUPS.slice(1).map(([g, t]) => `<section><h2>${t}</h2><ul class="ls">${list(g)}</ul></section>`).join('')}</div>
+    </div>
+  </main></div>${nav.dock}`;
   scrollTo(0, 0);
 }
 
@@ -119,14 +141,13 @@ function fa() {
 }
 function faStage(n) {
   const s = FA[n - 1]; if (!s) return go('#/fa');
-  app.innerHTML = `${NAV('fa')}<main class="page unit">
-    <a class="crumb" href="#/fa">Fa anahtarı</a>
+  const nav = keyNav({ list: FA.map(x => ({ n: x.n, title: x.title })), cur: n, hrefOf: (k) => `#/fa/${k}`, doneOf: (k) => FA[k - 1].etudes.every(e => isDone(ITEMS.get(e.id))), label: 'Aşama', home: ['#/fa', 'Fa anahtarı'], other: ['#/', 'Eğitim ağacı'] });
+  app.innerHTML = `<div class="withkeys">${nav.rail}<main class="page unit">
     <h1><span>${n}</span>${esc(s.title)}</h1>
     <div class="stage-staff">${miniStaff(s.notes)}</div>
     <p class="aim">${esc(s.text)}</p>
     <section><h2>Etütler</h2><ul class="ls">${s.etudes.map(e => { const it = ITEMS.get(e.id); return `<li><a href="${href(it)}">${ST_MARK(itemState(it))}<span class="lt"><b>${esc(it.title)}</b><small>${it.bars} ölçü, sol el</small></span></a></li>`; }).join('')}</ul></section>
-    <nav class="pn">${n > 1 ? `<a href="#/fa/${n - 1}">Önceki aşama</a>` : '<span></span>'}${n < FA.length ? `<a href="#/fa/${n + 1}">Sonraki aşama</a>` : ''}</nav>
-  </main>`;
+  </main></div>${nav.dock}`;
   scrollTo(0, 0);
 }
 const noteCache = new Map();
@@ -136,7 +157,7 @@ async function practice(id, sec) {
   const token = ++practice.t;
   const all = await loadNotes(it.kind === 'fa' ? 'fa' : `u${String(it.unit).padStart(2, '0')}`);
   if (token !== practice.t) return;
-  const secI = Math.min(+sec || 0, it.sections.length - 1);
+  const secI = sec === 'tum' && it.sections.length > 1 ? 'all' : Math.min(+sec || 0, it.sections.length - 1);
   let backHref, nextItemHref, sub;
   if (it.kind === 'fa') {
     backHref = `#/fa/${it.stage}`; sub = `${FA[it.stage - 1].title}, sol el`;
@@ -157,10 +178,16 @@ function settings() {
     <section><h2>Klavye bağlantısı</h2>
       <p>${m.supported ? (m.devices.length ? `Bağlı: ${esc(m.devices[0])}` : 'MIDI klavyeni bilgisayara tak, sonra bağlan.') : 'Bu tarayıcı MIDI desteklemiyor. Chrome ya da Edge kullan.'}</p>
       ${m.supported ? '<button class="sec" id="midi">MIDI klavyeye bağlan</button>' : ''}</section>
+    <section><h2>Piyano sesi</h2>
+      <ul class="ps">${PIANOS.map(p => `<li><label><input type="radio" name="piano" value="${p.id}" ${p.id === S.piano ? 'checked' : ''}><span><b>${esc(p.name)}</b><small>${esc(p.desc)}</small></span></label><button class="sec dn" data-try="${p.id}">Dene</button></li>`).join('')}</ul>
+    </section>
     <section><h2>İlerleme</h2><p>İlerlemen bu cihazda saklanır. Başka cihaza taşımak için dosya olarak al.</p>
       <div class="btns"><button class="sec" id="exp">Yedeği indir</button><label class="sec file">Yedek yükle<input id="imp" type="file" accept=".json" hidden></label><button class="sec" id="rst">İlerlemeyi sil</button></div></section>
   </main>`;
   app.querySelector('#midi')?.addEventListener('click', async () => { const r = await connectMIDI(); toast(r.ok && r.devices.length ? `MIDI bağlandı: ${r.devices[0]}` : 'MIDI aygıtı bulunamadı.'); settings(); });
+  const pick = (id) => { S.piano = id; save(); setPiano(id); app.querySelectorAll('input[name=piano]').forEach(r => { r.checked = r.value === id; }); };
+  app.querySelector('.ps').addEventListener('change', (e) => { if (e.target.name === 'piano') pick(e.target.value); });
+  app.querySelector('.ps').addEventListener('click', async (e) => { const b = e.target.closest('[data-try]'); if (!b) return; pick(b.dataset.try); b.textContent = 'Yükleniyor'; await previewPiano(); b.textContent = 'Dene'; });
   app.querySelector('#exp').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([exportData()], { type: 'application/json' })); a.download = 'piyano-okulu-yedek.json'; a.click(); };
   app.querySelector('#imp').onchange = async (e) => { try { importData(await e.target.files[0].text()); toast('Yedek yüklendi.'); } catch (x) { toast('Dosya okunamadı.'); } };
   app.querySelector('#rst').onclick = () => { const b = app.querySelector('#rst'); if (b.dataset.ok) { resetAll(); toast('İlerleme silindi.'); go('#/'); } else { b.dataset.ok = 1; b.textContent = 'Silmek için yeniden dokun'; } };
@@ -174,7 +201,12 @@ function sources() {
     <p>RCM listesinde olmayan etüt kitaplarının sırası ${L('Jean-Michel Serres’in düzenlediği sıralamaya', 'https://jeanmichelserres.com/?p=1266')} dayanır.</p></section>
     <section><h2>Parmak geçişi ve atlama</h2><p>Bu alıştırmalar bu uygulama için yazıldı. Geçiş ve atlama tarifi ${L('Chuan C. Chang, Fundamentals of Piano Practice', 'https://fundamentals-of-piano-practice.readthedocs.io/chapter1/ch1_topics/III.5.html')} kitabının ${L('atlama bölümüyle', 'https://fundamentals-of-piano-practice.readthedocs.io/chapter1/ch1_topics/III.7.html')} birlikte izlenerek yazıldı. Dizi parmaklamaları standart tablolardandır.</p></section>
     <section><h2>Fa anahtarı</h2><p>Etütler bu uygulama için yazıldı. Sıralama durak nota yöntemini izler: önce Fa çizgisi ve orta Do, sonra komşular.</p></section>
-    <section><h2>Notalar</h2><p>Eser ve etütlerin hepsi kamu malıdır. Nota kaynakları: ${L('Mutopia Project', 'https://www.mutopiaproject.org')}, Nathanael Meister’in ${L('LilyPond piyano okulu', 'https://github.com/nathanaelmeister/Piano_-_First_two_hand_exercises')} (Beyer, Czerny, Köhler, Berens, Gurlitt) ve ${L('da-x/czerny', 'https://github.com/da-x/czerny')}. Piyano sesi: Musyng Kite (Benjamin Gleitzman’ın midi-js-soundfonts paketi).</p></section>
+    <section><h2>Notalar</h2><p>Eser ve etütlerin hepsi kamu malıdır. Nota kaynakları: ${L('Mutopia Project', 'https://www.mutopiaproject.org')}, Nathanael Meister’in ${L('LilyPond piyano okulu', 'https://github.com/nathanaelmeister/Piano_-_First_two_hand_exercises')} (Beyer, Czerny, Köhler, Berens, Gurlitt) ve ${L('da-x/czerny', 'https://github.com/da-x/czerny')}. </p></section>
+    <section><h2>Piyano sesleri</h2><p>Hepsi ücretsiz ve serbest lisanslıdır. Örnekler MP3’e çevrildi, tek dinamik katman seçildi ve kısaltıldı.</p>
+      <p>Musyng Kite: Sarcyan, ${L('midi-js-soundfonts', 'https://github.com/gleitz/midi-js-soundfonts')} üzerinden, ${L('CC BY-SA 3.0', 'https://creativecommons.org/licenses/by-sa/3.0/')}.</p>
+      <p>Salamander Grand Piano: Alexander Holm, Yamaha C5, ${L('kaynak', 'https://github.com/sfzinstruments/SalamanderGrandPiano')}, ${L('CC BY 3.0', 'https://creativecommons.org/licenses/by/3.0/')}.</p>
+      <p>Splendid Grand Piano: Akai, Steinway, kamu malı olarak yayımlandı, ${L('kaynak', 'https://github.com/sfzinstruments/SplendidGrandPiano')}.</p>
+      <p>Headroom Piano: Bengt Nilsson, Yamaha C3, ${L('kaynak', 'https://github.com/sfzinstruments/BengtNilsson.HeadroomPiano')}, ${L('CC BY 4.0', 'https://creativecommons.org/licenses/by/4.0/')}.</p></section>
   </main>`;
   scrollTo(0, 0);
 }
@@ -192,6 +224,7 @@ function route() {
 }
 addEventListener('hashchange', route);
 installAudioUnlock();
+setPiano(db.settings.piano);
 route();
 autoConnectMIDI();
 if ('serviceWorker' in navigator && isSecureContext) {

@@ -1,4 +1,5 @@
-// Piyano sesi: Musyng Kite örnekleri (sounds/piano). Örnek henüz yüklenmediyse sentezle çalar.
+// Piyano sesi: seçilen örnek seti (sounds/). Örnek henüz yüklenmediyse sentezle çalar.
+import { PIANOS } from './pianos.js';
 let ctx = null, master = null, dry = null, wet = null, noise = null;
 const waves = new Map();
 const live = new Set();
@@ -65,17 +66,29 @@ function impulse(sec, decay) {
 
 // --- Örnekler
 const NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
-const fileOf = (m) => `sounds/piano/${NAMES[m % 12]}${Math.floor(m / 12) - 1}.mp3`;
-const samples = new Map(), loading = new Map();
+let cur = PIANOS[0], lastRange = null;
+const banks = new Map();
+const bank = (set) => { if (!banks.has(set.id)) banks.set(set.id, { samples: new Map(), loading: new Map() }); return banks.get(set.id); };
+const fileOf = (set, m) => `sounds/${set.dir}/${NAMES[m % 12]}${Math.floor(m / 12) - 1}.mp3`;
+const nearest = (set, m) => set.notes.reduce((best, n) => Math.abs(n - m) < Math.abs(best - m) ? n : best, set.notes[0]);
 let decoder = null;
-const REF_PEAK = 0.06, MAKEUP = 8.5, FIRST = 21, LAST = 108;
+const REF_PEAK = 0.06;
 export const pianoState = { loaded: 0, total: 0, ready: false };
+export const currentPiano = () => cur.id;
+export function setPiano(id) {
+  const next = PIANOS.find(p => p.id === id) || PIANOS[0];
+  if (next === cur) return;
+  stopAll(); cur = next;
+  pianoState.loaded = 0; pianoState.total = 0; pianoState.ready = false;
+  dispatchEvent(new CustomEvent('piano-progress'));
+  if (lastRange) preloadPiano(...lastRange);
+}
 
 function decode(bytes) {
   if (!decoder) { const OC = window.OfflineAudioContext || window.webkitOfflineAudioContext; decoder = new OC(2, 1, 44100); }
   return new Promise((ok, no) => decoder.decodeAudioData(bytes, ok, no));
 }
-function measure(buf) {
+function measure(buf, set) {
   const d = buf.getChannelData(0), sr = buf.sampleRate, win = Math.max(1, Math.round(sr * 0.002));
   let peak = 0;
   for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > peak) peak = a; }
@@ -86,39 +99,48 @@ function measure(buf) {
     let m = 0; for (let j = i; j < i + win && j < d.length; j++) m = Math.max(m, Math.abs(d[j]));
     if (m >= peak * 0.5) { on = i; break; }
   }
-  return { buf, peak, offset: Math.max(0, on / sr - 0.004), norm: Math.pow(REF_PEAK / Math.max(peak, 0.005), 0.6) };
+  return { buf, peak, makeup: set.makeup, offset: Math.max(0, on / sr - 0.004), norm: Math.pow(REF_PEAK / Math.max(peak, 0.005), 0.6) };
 }
-function loadSample(m) {
-  if (m < FIRST || m > LAST || samples.has(m)) return Promise.resolve();
+function loadSample(m, set = cur) {
+  const { samples, loading } = bank(set);
+  if (samples.has(m)) return Promise.resolve();
   if (loading.has(m)) return loading.get(m);
-  const p = fetch(fileOf(m)).then(r => { if (!r.ok) throw new Error('yok'); return r.arrayBuffer(); })
-    .then(decode).then(b => { samples.set(m, measure(b)); })
+  const p = fetch(fileOf(set, m)).then(r => { if (!r.ok) throw new Error('yok'); return r.arrayBuffer(); })
+    .then(decode).then(b => { samples.set(m, measure(b, set)); })
     .catch(() => { /* sentez yedeği devreye girer */ })
     .finally(() => loading.delete(m));
   loading.set(m, p); return p;
 }
 export async function preloadPiano(lo = 36, hi = 84) {
-  const center = 60, list = [];
-  for (let m = Math.max(FIRST, lo); m <= Math.min(LAST, hi); m++) list.push(m);
-  list.sort((a, b) => Math.abs(a - center) - Math.abs(b - center));
-  pianoState.total = list.length;
+  const set = cur, { samples } = bank(set);
+  lastRange = [lo, hi];
+  const list = [...new Set(set.notes.filter(n => n >= lo - 2 && n <= hi + 2))].sort((a, b) => Math.abs(a - 60) - Math.abs(b - 60));
+  if (set === cur) { pianoState.total = list.length; pianoState.ready = false; }
   let i = 0;
   const step = async () => {
-    while (i < list.length) {
-      await loadSample(list[i++]);
-      pianoState.loaded = list.filter(x => samples.has(x)).length;
-      dispatchEvent(new CustomEvent('piano-progress'));
+    while (i < list.length && set === cur) {
+      await loadSample(list[i++], set);
+      if (set === cur) { pianoState.loaded = list.filter(x => samples.has(x)).length; dispatchEvent(new CustomEvent('piano-progress')); }
     }
   };
   await Promise.all(Array.from({ length: 6 }, step));
-  pianoState.ready = pianoState.loaded === list.length;
-  dispatchEvent(new CustomEvent('piano-progress'));
+  if (set === cur) { pianoState.ready = pianoState.loaded === list.length; dispatchEvent(new CustomEvent('piano-progress')); }
+}
+// Ayarlardaki Dene düğmesi: kısa bir Do majör dizilişi
+export async function previewPiano() {
+  ensureAudio();
+  const set = cur, notes = [60, 64, 67, 72];
+  await Promise.all([...notes, 48].map(m => loadSample(nearest(set, m), set)));
+  if (ctx.state !== 'running') await ctx.resume();
+  const t0 = ctx.currentTime + 0.05;
+  notes.forEach((m, i) => playNote(m, t0 + i * 0.16, 1.1 - i * 0.16, 0.72));
+  playNote(48, t0 + 0.64, 1.4, 0.66);
 }
 function findSample(m) {
-  const s = samples.get(m);
-  if (s) return { s, rate: 1 };
-  loadSample(m);
-  for (let d = 1; d <= 4; d++) {
+  const { samples } = bank(cur), a = nearest(cur, m), s = samples.get(a);
+  if (s) return { s, rate: Math.pow(2, (m - a) / 12) };
+  loadSample(a);
+  for (let d = 1; d <= 6; d++) {
     for (const k of [m - d, m + d]) { const n = samples.get(k); if (n) return { s: n, rate: Math.pow(2, (m - k) / 12) }; }
   }
   return null;
@@ -128,7 +150,7 @@ function sampleVoice(midi, t, vel, { s, rate }) {
   const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.3;
   lp.frequency.value = Math.min(18000, 1500 + 17000 * Math.pow(vel, 1.8)); // hafif basış daha yumuşak tını
   const g = ctx.createGain();
-  const level = MAKEUP * s.norm * Math.pow(vel, 1.5);
+  const level = s.makeup * s.norm * Math.pow(vel, 1.5);
   const life = (s.buf.duration - s.offset) / rate;
   g.gain.setValueAtTime(level, t);
   g.gain.setValueAtTime(level, t + life - 0.2);

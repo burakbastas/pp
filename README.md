@@ -15,7 +15,11 @@ Adres: https://burakbastas.github.io/pp/
 
 **Fa anahtarı.** On iki aşamada kırk sekiz etüt: üç durak notadan başlar, komşu notalar, konumlar, çizgi ve aralıklar, ek çizgiler, tondaki işaretler, ritim, akor.
 
-**Çalışma ekranı.** Çal seçiliyken porte MIDI klavyeni izler; MIDI yoksa ekrandaki tuşlara ya da bilgisayar klavyesine basabilirsin. Dinle kipinde parçayı seçtiğin tempoda duyarsın. Uzun parçalar bölümlere ayrılır. Sol, sağ ve iki el ayrı ayrı çalışılır; yüzde 90 alan bölüm geçilmiş sayılır.
+**Gezinme.** Ünite ve aşama sayfalarında telefon ve tablette altta 12 tuşlu klavye, geniş ekranda solda dikey klavye durur. Her tuş bir üniteye gider.
+
+**Piyano sesleri.** Ayarlardan seçilir: Musyng Kite, Salamander (Yamaha C5), Splendid (Steinway), Headroom (Yamaha C3).
+
+**Çalışma ekranı.** Çal seçiliyken porte MIDI klavyeni izler; MIDI yoksa ekrandaki tuşlara ya da bilgisayar klavyesine basabilirsin. Dinle kipinde parçayı seçtiğin tempoda duyarsın. Uzun parçalar bölümlere ayrılır; ölçü aralıklarının sonundaki Tüm eser ya da Tüm etüt seçeneği parçanın tamamını açar. Sol, sağ ve iki el ayrı ayrı çalışılır; yüzde 90 alan bölüm geçilmiş sayılır.
 
 ## Klavye bağlantısı
 
@@ -29,7 +33,8 @@ Chrome ya da Edge kullan. Klavyeyi USB ile bağla, çalışma ekranındaki “MI
 - Parmak geçişi ve atlama: [Chuan C. Chang, Fundamentals of Piano Practice](https://fundamentals-of-piano-practice.readthedocs.io/)
 - Notalar (kamu malı eserler): [Mutopia Project](https://www.mutopiaproject.org), [Nathanael Meister’in LilyPond okulu](https://github.com/nathanaelmeister/Piano_-_First_two_hand_exercises), [da-x/czerny](https://github.com/da-x/czerny)
 - Parmak alıştırmaları ve fa anahtarı etütleri bu uygulama için yazıldı.
-- Piyano sesi: Musyng Kite, [midi-js-soundfonts](https://github.com/gleitz/midi-js-soundfonts). Yazı tipleri: Old Standard TT ve Libre Franklin (SIL OFL).
+- Piyano sesleri: Musyng Kite, [midi-js-soundfonts](https://github.com/gleitz/midi-js-soundfonts) üzerinden (CC BY-SA 3.0); [Salamander Grand Piano](https://github.com/sfzinstruments/SalamanderGrandPiano), Alexander Holm (CC BY 3.0); [Splendid Grand Piano](https://github.com/sfzinstruments/SplendidGrandPiano), Akai (kamu malı); [Headroom Piano](https://github.com/sfzinstruments/BengtNilsson.HeadroomPiano), Bengt Nilsson (CC BY 4.0). Ayrıntı: `sounds/KAYNAK.txt`.
+- Yazı tipleri: Old Standard TT ve Libre Franklin (SIL OFL).
 
 ## Yapı
 
