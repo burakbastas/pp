@@ -1,7 +1,8 @@
 {
+ "id": "/pp/",
  "name": "Piyano Okulu",
  "short_name": "Piyano",
- "start_url": "./index.html",
+ "start_url": "./",
  "scope": "./",
  "display": "standalone",
  "background_color": "#BCD0AC",
@@ -9,17 +10,19 @@
  "lang": "tr",
  "icons": [
   {
-   "src": "icons/icon-192.png",
+   "src": "icons/piyano-192.png",
    "sizes": "192x192",
-   "type": "image/png"
+   "type": "image/png",
+   "purpose": "any"
   },
   {
-   "src": "icons/icon-512.png",
+   "src": "icons/piyano-512.png",
    "sizes": "512x512",
-   "type": "image/png"
+   "type": "image/png",
+   "purpose": "any"
   },
   {
-   "src": "icons/icon-maskable.png",
+   "src": "icons/piyano-maskable.png",
    "sizes": "512x512",
    "type": "image/png",
    "purpose": "maskable"
