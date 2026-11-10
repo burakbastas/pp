@@ -1,10 +1,11 @@
 // MIDI, bilgisayar klavyesi ve mikrofon girişleri tek olay akışında toplanır
-import { ensureAudio } from './piano.js';
+import { ensureAudio } from './o.js';
 
 const listeners = new Set();
 export const Inputs = {
   on(fn) { listeners.add(fn); return () => listeners.delete(fn); },
-  emit(type, midi, src, vel) { listeners.forEach(f => f(type, midi, src, vel)); },
+  // raw: MIDI basış hızı (1-127), t: olay zamanı (performance.now ölçeğinde)
+  emit(type, midi, src, vel, raw, t) { const at = t || performance.now(); listeners.forEach(f => f(type, midi, src, vel, raw, at)); },
   midi: { supported: !!navigator.requestMIDIAccess, ready: false, devices: [], busy: [] },
 };
 
@@ -21,9 +22,10 @@ export async function connectMIDI() {
       live.forEach(input => {
         input.onmidimessage = (ev) => {
           const [st, n, v] = ev.data; const cmd = st & 0xf0;
-          if (cmd === 0x90 && v > 0) Inputs.emit('down', n, 'midi', Math.pow(v / 127, 0.8));
-          else if (cmd === 0x80 || (cmd === 0x90 && v === 0)) Inputs.emit('up', n, 'midi');
-          else if (cmd === 0xb0 && n === 64) Inputs.emit('pedal', v, 'midi');
+          const at = ev.timeStamp || performance.now();
+          if (cmd === 0x90 && v > 0) Inputs.emit('down', n, 'midi', Math.pow(v / 127, 0.8), v, at);
+          else if (cmd === 0x80 || (cmd === 0x90 && v === 0)) Inputs.emit('up', n, 'midi', 0, 0, at);
+          else if (cmd === 0xb0 && n === 64) Inputs.emit('pedal', v, 'midi', 0, 0, at);
         };
       });
       window.dispatchEvent(new CustomEvent('midi-devices'));

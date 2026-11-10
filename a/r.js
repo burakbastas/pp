@@ -1,7 +1,7 @@
 // Metin nota biçimini ölçü/olay yapısına çevirir.
 // "bb5:4_3" perde:süre_parmak | "!" stakato | "~" bağ | "(" ")" legato yayı | "^t" "^m" "^p" süsleme | ">" aksan
 // "<c3_5 e3_3 g3_1>:2" akor | "r:4" sus | "//" ikinci ses | "|:" ":|" tekrar | "%b" "%t" anahtar değişimi
-import { parsePitch } from './theory.js';
+import { parsePitch } from './t.js';
 
 export function durQuarters(tok) {
   const m = /^(\d+)(\.*)$/.exec(tok);

@@ -1,5 +1,5 @@
 // Ekran klavyesi: parmak numaraları, el renkleri, çoklu dokunuş
-import { STEP_SEMI, SOLFEGE } from '../notation/theory.js';
+import { STEP_SEMI, SOLFEGE } from './t.js';
 
 const BLACK = new Set([1, 3, 6, 8, 10]);
 const WHITE_NAME = { 0: 0, 2: 1, 4: 2, 5: 3, 7: 4, 9: 5, 11: 6 };

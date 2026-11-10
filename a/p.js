@@ -1,16 +1,17 @@
 // Çalma motoru: Dinle / Birlikte çal / Bekle kipleri, döngü, tempo, el seçimi
-import { flatten, playOrder } from '../notation/parse.js';
-import { ensureAudio, playNote, click, stopAll, audioCtx } from '../audio/piano.js';
-import { Inputs } from '../audio/input.js';
+import { flatten, playOrder } from './r.js';
+import { ensureAudio, playNote, click, stopAll, audioCtx } from './o.js';
+import { Inputs } from './i.js';
+import { dynReport, durReport } from './f.js';
 
 export class Player {
   constructor({ score, engraved, keyboard, onState }) {
     this.score = score; this.eng = engraved; this.kb = keyboard; this.onState = onState || (() => { });
     this.mode = 'listen'; this.hands = 'both'; this.tempo = score.tempo; this.metro = true; this.countIn = true; this.useRepeats = false;
     this.hint = 'always'; this.loop = null; this.state = 'idle'; this.stats = null; this.autoUp = false;
-    this.mic = null;
+    this.mic = null; this.pedalDown = false; this.kind = 'piece';
     this.rebuild();
-    this.off = Inputs.on((t, m, s) => this.input(t, m, s));
+    this.off = Inputs.on((t, m, s, v, raw, at) => this.input(t, m, s, raw, at));
   }
   destroy() { this.stop(); this.off(); }
   setEngraved(e) { this.eng = e; if (this.loop) e.setLoop(this.loop.a, this.loop.b); }
@@ -211,13 +212,13 @@ export class Player {
     this.onState('done');
     if (this.loop) this.loopTimer = setTimeout(() => { this.stats = { hits: 0, wrong: 0, first: 0, total: this.steps.length }; this.startWait(); }, 900);
   }
-  input(type, midi, src) {
-    if (type === 'pedal') return;
+  input(type, midi, src, raw, at) {
+    if (type === 'pedal') { this.pedalDown = midi >= 64; if (this.pedalDown) this.fw?.holds.forEach(h => { h.pedal = true; }); return; }
     if (type === 'down') this.kb?.pressed(midi, true);
-    if (type === 'up') { this.kb?.pressed(midi, false); return; }
+    if (type === 'up') { this.kb?.pressed(midi, false); this.release(midi, at); return; }
     // Dinle kipindeyken MIDI'den çalmaya başlanırsa takip kendiliğinden açılır
     if (src === 'midi' && this.state === 'idle' && this.mode === 'listen') { this.mode = 'follow'; this.startFollow(); this.onState('auto-follow'); }
-    if (this.state === 'following') { this.followNote(midi); return; }
+    if (this.state === 'following') { this.followNote(midi, src === 'midi' ? raw : 0, at); return; }
     if (this.state === 'playing' && this.timing) { this.timedHit(midi); return; }
     if (this.state !== 'waiting') return;
     if (this.pending.has(midi)) {
@@ -267,7 +268,7 @@ export class Player {
   resetFollow(keepMarks) {
     this.stepIdx = 0;
     this.pend = this.steps.map(s => new Set(s.notes.map(n => n.midi)));
-    this.fw = { hits: 0, missed: 0, wrong: 0, bars: new Map(), wrongBars: [], hist: [], streak: 0, started: false, log: [], bpm: null, spq: null, lastAt: null, lastWall: null, fresh: keepMarks, acc: new Set() };
+    this.fw = { hits: 0, missed: 0, wrong: 0, bars: new Map(), wrongBars: [], hist: [], streak: 0, started: false, log: [], bpm: null, spq: null, lastAt: null, lastWall: null, fresh: keepMarks, acc: new Set(), dyn: new Map(), holds: new Map(), durs: new Map(), wall: new Map() };
   }
   barOf(i) { const s = this.steps[i]; return s ? s.notes[0].mi : 0; }
   addBar(i, by = 1) { const b = this.barOf(i), f = this.fw; f.bars.set(b, (f.bars.get(b) || 0) + by); }
@@ -311,9 +312,12 @@ export class Player {
       playNote(n.midi, t + (n.at - s.at) * spq, n.d * spq, 0.5);
     }
   }
-  followHit(i, m) {
-    const f = this.fw, s = this.steps[i];
+  followHit(i, m, raw, at) {
+    const f = this.fw, s = this.steps[i], now = at || performance.now();
     this.pend[i].delete(m); f.hits++; f.streak = 0; f.started = true;
+    // dinamik ve süre için: basış hızı ve basış anı
+    if (!f.wall.has(i)) f.wall.set(i, now);
+    s.notes.forEach(n => { if (n.midi !== m) return; const k = n.key + ':' + m; if (raw) f.dyn.set(k, { n, v: raw }); f.holds.set(m, { n, k, t0: now, pedal: this.pedalDown, spq: f.spq }); });
     this.kb?.flash(m, 'okk');
     s.notes.filter(n => n.midi === m).forEach(n => this.eng.markResult(n.key, 'good'));
     if (!f.acc.has(i)) { f.acc.add(i); this.noteTime(i); this.accompany(i); }
@@ -326,15 +330,22 @@ export class Player {
     this.pend[i].forEach(m => { f.missed++; this.addBar(i); s.notes.filter(n => n.midi === m).forEach(n => this.eng.markResult(n.key, 'bad')); });
     this.pend[i].clear();
   }
-  followNote(m) {
+  // Tuş bırakıldı: tutulan notanın süresi kaydedilir
+  release(m, at) {
+    const f = this.fw; if (this.state !== 'following' || !f) return;
+    const h = f.holds.get(m); if (!h) return;
+    f.holds.delete(m);
+    f.durs.set(h.k, { n: h.n, t0: h.t0, t1: at || performance.now(), pedal: h.pedal, spq: h.spq });
+  }
+  followNote(m, raw, at) {
     const f = this.fw, n = this.steps.length; if (!n) return;
     if (f.fresh) { f.fresh = false; this.eng.clearMarks(); this.onState('follow-step'); }
     f.hist.push(m); if (f.hist.length > 8) f.hist.shift();
     const i = this.stepIdx;
-    if (i < n && this.pend[i].has(m)) { this.followHit(i, m); return; }
+    if (i < n && this.pend[i].has(m)) { this.followHit(i, m, raw, at); return; }
     if (i + 1 < n && this.pend[i + 1].has(m)) {
       if (f.started) this.markMissed(i); else this.pend[i].clear();
-      this.followHit(i + 1, m); return;
+      this.followHit(i + 1, m, raw, at); return;
     }
     // tekrar ya da düzeltme: son iki adımdaki nota ceza almaz
     if ([i - 1, i - 2].some(x => x >= 0 && this.steps[x].notes.some(o => o.midi === m))) return;
@@ -346,10 +357,10 @@ export class Player {
       if (this.hint === 'error') this.showHintNow();
       this.onState('follow-step');
     }
-    this.relocate();
+    this.relocate(raw, at);
   }
   // Son çalınan üç nota notanın başka yerine uyuyorsa imleci oraya taşır
-  relocate() {
+  relocate(raw, at) {
     const f = this.fw, K = 3, n = this.steps.length;
     if (f.hist.length < K) return;
     const last = f.hist.slice(-K);
@@ -370,9 +381,9 @@ export class Player {
     if (cand.length > 1 && f.started && f.streak < 4) return;
     const i = this.stepIdx;
     cand.sort((a, b) => (a >= i ? a - i : (i - a) * 2) - (b >= i ? b - i : (i - b) * 2));
-    this.jumpTo(cand[0], last);
+    this.jumpTo(cand[0], last, raw, at);
   }
-  jumpTo(j, last) {
+  jumpTo(j, last, raw, at) {
     const f = this.fw, i = this.stepIdx;
     if (f.started) { for (let w = 0; w < f.streak && f.wrongBars.length; w++) { f.wrong--; const b = f.wrongBars.pop(); f.bars.set(b, Math.max(0, (f.bars.get(b) || 1) - 1)); } }
     f.streak = 0; f.log = []; f.lastAt = null; f.lastWall = null;
@@ -382,17 +393,18 @@ export class Player {
       for (let k = j; k <= Math.min(i, this.steps.length - 1); k++) {
         this.pend[k] = new Set(this.steps[k].notes.map(o => o.midi));
         this.steps[k].notes.forEach(o => this.eng.clearMark(o.key));
-        f.acc.delete(k);
+        f.acc.delete(k); f.wall.delete(k);
       }
     }
     this.stepIdx = j;
     const hit = last[last.length - 1];
-    this.followHit(j, hit);
+    this.followHit(j, hit, raw, at);
   }
   finishFollow() {
     const f = this.fw;
     const weak = [...f.bars.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([b]) => b);
-    this.lastFollow = { pct: Math.round(100 * f.hits / Math.max(1, f.hits + f.missed + f.wrong)), wrong: f.wrong, missed: f.missed, bpm: f.bpm, weak };
+    this.lastFollow = { pct: Math.round(100 * f.hits / Math.max(1, f.hits + f.missed + f.wrong)), wrong: f.wrong, missed: f.missed, bpm: f.bpm, weak,
+      dyn: dynReport([...f.dyn.values()], { kind: this.kind, hands: this.hands }), dur: durReport([...f.durs.values()], this.steps, f.wall) };
     this.resetFollow(true);
     this.showStep(this.steps[0]);
     this.onState('follow-done');
@@ -403,7 +415,7 @@ export class Player {
     const marks = new Map(); s.notes.forEach(n => marks.set(n.midi, { hand: n.staff, finger: n.finger })); this.kb?.setMarks(marks);
   }
   async enableMic(on) {
-    const { MicListener } = await import('../audio/input.js');
+    const { MicListener } = await import('./i.js');
     if (on) { const m = new MicListener(); const ok = await m.start(); if (!ok) return false; m.onHit = (l) => this.micHit(l); this.mic = m; if (this.state === 'waiting') this.enterStep(); if (this.state === 'following') this.enterFollow(); return true; }
     this.mic?.stop(); this.mic = null; return true;
   }

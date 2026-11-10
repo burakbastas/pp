@@ -1,12 +1,13 @@
 // Piyano Okulu: eğitim ağacı, fa anahtarı alanı ve çalışma ekranı
-import { UNITS, FA } from './data/tree.js';
-import { db, save, itemState, isDone, isStarted, required, exportData, importData, resetAll } from './store.js';
-import { mountPractice } from './ui/practice.js';
-import { GLYPHS } from './notation/glyphs.js';
-import { autoConnectMIDI, connectMIDI, Inputs } from './audio/input.js';
-import { installAudioUnlock, setPiano, previewPiano } from './audio/piano.js';
-import { PIANOS } from './audio/pianos.js';
-import { esc, toast } from './ui/dom.js';
+import { UNITS, FA } from '../b/0.js';
+import { db, save, itemState, isDone, isStarted, required, exportData, importData, resetAll } from './d.js';
+import { mountPractice } from './e.js';
+import { mountCards, lastRound } from './c.js';
+import { GLYPHS } from './g.js';
+import { autoConnectMIDI, connectMIDI, Inputs } from './i.js';
+import { installAudioUnlock, setPiano, previewPiano } from './o.js';
+import { PIANOS } from './q.js';
+import { esc, toast } from './u.js';
 
 const app = document.getElementById('app');
 let active = null;
@@ -132,6 +133,7 @@ function fa() {
       <div><h1>Fa anahtarı</h1><p>Sol eli porteden okumak için sıfırdan on iki aşama. Önce üç durak nota, sonra komşuları, en sonda akorlar.</p>
       ${nx ? `<a class="pri" href="${href(nx)}">Devam et: ${esc(nx.title)}</a>` : ''}</div>
     </section>
+    <section class="kc-cta"><div><h2>Nota kartları</h2><p>Notayı gör, klavyede bas. Hız ve doğruluk ölçülür, karıştırdığın notalar daha sık gelir.</p>${(() => { const l = lastRound(); return l ? `<p class="m">Son tur: ${l.ok} / ${l.n}, ortalama ${(l.avg / 1000).toFixed(1).replace('.', ',')} sn</p>` : ''; })()}</div><a class="sec" href="#/fa/kart">Kartlara başla</a></section>
     <ol class="stages">${FA.map(s => {
     const d = s.etudes.filter(e => isDone(ITEMS.get(e.id))).length;
     return `<li><a href="#/fa/${s.n}"><span class="sn">${s.n}</span><span class="stt"><b>${esc(s.title)}</b><small>${d ? `${d} / ${s.etudes.length} etüt` : `${s.etudes.length} etüt`}</small></span>${miniStaff(s.notes)}</a></li>`;
@@ -146,16 +148,17 @@ function faStage(n) {
     <h1><span>${n}</span>${esc(s.title)}</h1>
     <div class="stage-staff">${miniStaff(s.notes)}</div>
     <p class="aim">${esc(s.text)}</p>
+    <p><a class="sec" href="#/fa/kart/${n}">Aşama 1–${n} notalarıyla kart çalış</a></p>
     <section><h2>Etütler</h2><ul class="ls">${s.etudes.map(e => { const it = ITEMS.get(e.id); return `<li><a href="${href(it)}">${ST_MARK(itemState(it))}<span class="lt"><b>${esc(it.title)}</b><small>${it.bars} ölçü, sol el</small></span></a></li>`; }).join('')}</ul></section>
   </main></div>${nav.dock}`;
   scrollTo(0, 0);
 }
 const noteCache = new Map();
-async function loadNotes(key) { if (!noteCache.has(key)) noteCache.set(key, (await import(`./data/n/${key}.js`)).default); return noteCache.get(key); }
+async function loadNotes(key) { if (!noteCache.has(key)) noteCache.set(key, (await import(`../b/${key}.js`)).default); return noteCache.get(key); }
 async function practice(id, sec) {
   const it = ITEMS.get(id); if (!it) return go('#/');
   const token = ++practice.t;
-  const all = await loadNotes(it.kind === 'fa' ? 'fa' : `u${String(it.unit).padStart(2, '0')}`);
+  const all = await loadNotes(it.kind === 'fa' ? 'f' : String(it.unit));
   if (token !== practice.t) return;
   const secI = sec === 'tum' && it.sections.length > 1 ? 'all' : Math.min(+sec || 0, it.sections.length - 1);
   let backHref, nextItemHref, sub;
@@ -214,8 +217,9 @@ const go = (h) => { location.hash = h; };
 function route() {
   stop(); practice.t++;
   const h = location.hash.replace(/^#\/?/, ''), [p, a, b] = h.split('/');
-  document.body.classList.toggle('playing', p === 'c');
+  document.body.classList.toggle('playing', p === 'c' || (p === 'fa' && a === 'kart'));
   if (p === 'u') return unit(+a);
+  if (p === 'fa' && a === 'kart') { active = mountCards(app, { stage: +b || 0 }); return; }
   if (p === 'fa') return a ? faStage(+a) : fa();
   if (p === 'c') return practice(a, b);
   if (p === 'ayar') return settings();

@@ -1,6 +1,6 @@
 // Küçük nota dizgi motoru: ölçüleri SVG büyük porteye yerleştirir.
-import { GLYPHS } from './glyphs.js';
-import { keyAlter, keySigPositions, SOLFEGE } from './theory.js';
+import { GLYPHS } from './g.js';
+import { keyAlter, keySigPositions, SOLFEGE } from './t.js';
 
 const SP = 10, HALF = 5, STAFF_H = 40;
 const TOP_DIA = { treble: 38, bass: 26 };
@@ -568,3 +568,6 @@ function beamGroups(v, time, beats) {
   flush();
   return groups;
 }
+
+// Kartlar gibi tek nota çizimleri için parçalar
+export const PARTS = { glyph, head, ledger, accidental, drawClef, SP, HALF, TOP_DIA };

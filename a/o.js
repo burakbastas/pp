@@ -1,5 +1,5 @@
-// Piyano sesi: seçilen örnek seti (sounds/). Örnek henüz yüklenmediyse sentezle çalar.
-import { PIANOS } from './pianos.js';
+// Piyano sesi: seçilen örnek seti. Örnek henüz yüklenmediyse sentezle çalar.
+import { PIANOS } from './q.js';
 let ctx = null, master = null, dry = null, wet = null, noise = null;
 const waves = new Map();
 const live = new Set();
@@ -69,7 +69,7 @@ const NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
 let cur = PIANOS[0], lastRange = null;
 const banks = new Map();
 const bank = (set) => { if (!banks.has(set.id)) banks.set(set.id, { samples: new Map(), loading: new Map() }); return banks.get(set.id); };
-const fileOf = (set, m) => `sounds/${set.dir}/${NAMES[m % 12]}${Math.floor(m / 12) - 1}.mp3`;
+const fileOf = (set, m) => `s/${set.dir}/${NAMES[m % 12]}${Math.floor(m / 12) - 1}.mp3`;
 const nearest = (set, m) => set.notes.reduce((best, n) => Math.abs(n - m) < Math.abs(best - m) ? n : best, set.notes[0]);
 let decoder = null;
 const REF_PEAK = 0.06;

@@ -1,13 +1,13 @@
 // Çalışma ekranı: porte, ekran klavyesi, MIDI takibi ve sonuç
-import { parseScore } from '../notation/parse.js';
-import { Engraved } from '../notation/render.js';
-import { Player } from './player.js';
-import { Keyboard } from './keyboard.js';
-import { ensureAudio, playNote, setVolume, preloadPiano, pianoState, setPiano } from '../audio/piano.js';
-import { PIANOS } from '../audio/pianos.js';
-import { Inputs, connectMIDI, enableComputerKeys } from '../audio/input.js';
-import { db, save, record, score as bestOf, required, PASS, setManual, isDone } from '../store.js';
-import { esc, toast } from './dom.js';
+import { parseScore } from './r.js';
+import { Engraved } from './n.js';
+import { Player } from './p.js';
+import { Keyboard } from './k.js';
+import { ensureAudio, playNote, setVolume, preloadPiano, pianoState, setPiano } from './o.js';
+import { PIANOS } from './q.js';
+import { Inputs, connectMIDI, enableComputerKeys } from './i.js';
+import { db, save, record, score as bestOf, required, PASS, setManual, isDone } from './d.js';
+import { esc, toast } from './u.js';
 
 const ICON = {
   back: '<svg viewBox="0 0 20 20"><path d="M12.500 4 6.500 10l6 6"/></svg>',
@@ -91,7 +91,7 @@ export function mountPractice(root, { item, notes, sec, backHref, nextItemHref, 
     onUp: (m) => { voices.get(m)?.release?.(); voices.delete(m); Inputs.emit('up', m, 'touch'); },
   });
   pl = new Player({ score: s, engraved: eng, keyboard: kb, onState });
-  pl.hands = firstHand();
+  pl.hands = firstHand(); pl.kind = item.kind;
   pl.tempo = db.tempo[item.id] || Math.max(40, Math.round(item.tempo * 0.6));
   pl.metro = S.metro; pl.countIn = true; pl.hint = S.hint;
   pl.buildSteps();
@@ -154,6 +154,24 @@ export function mountPractice(root, { item, notes, sec, backHref, nextItemHref, 
     if (nextItemHref) return { label: 'Sonraki çalışma', run: () => { location.hash = nextItemHref; } };
     return { label: 'Üniteye dön', run: () => { location.hash = backHref; } };
   }
+  // Dinamik ve süre notları: geçme yüzdesine katılmaz
+  function feedbackHtml(r) {
+    let h = '';
+    if (S.dyn && r.dyn) {
+      const ser = r.dyn.series || [];
+      const svg = ser.length ? `<svg class="dv" viewBox="0 0 ${ser.length * 3} 40" preserveAspectRatio="none" aria-hidden="true">${ser.map(([st, v], i) => `<rect class="${st}" x="${i * 3}" y="${(40 - v / 127 * 40).toFixed(1)}" width="2" height="${(v / 127 * 40).toFixed(1)}"/>`).join('')}</svg>` : '';
+      h += `<div class="rx"><h3>Dinamik</h3>${r.dyn.msgs.map(m => `<p class="${m.c}">${esc(m.t)}</p>`).join('')}${svg}</div>`;
+    }
+    if (S.dur && r.dur) {
+      const bars = (a) => a.slice(0, 4).map(disp).join(', ') + (a.length > 4 ? '…' : '');
+      const lines = [];
+      if (r.dur.short.length) lines.push({ c: 'warn', t: `Uzun notaları erken bıraktın: ölçü ${bars(r.dur.short)}.` });
+      if (r.dur.legato.length) lines.push({ c: 'warn', t: `Staccato notaları uzun tuttun: ölçü ${bars(r.dur.legato)}.` });
+      if (!lines.length) lines.push({ c: 'good', t: `Süreler yerinde (${r.dur.checked} nota kontrol edildi).` });
+      h += `<div class="rx"><h3>Nota süresi</h3>${lines.map(m => `<p class="${m.c}">${esc(m.t)}</p>`).join('')}</div>`;
+    }
+    return h;
+  }
   function showResult(r) {
     const hand = pl.hands, pass = r.pct >= PASS;
     record(item.id, sec, hand, r.pct);
@@ -166,6 +184,7 @@ export function mountPractice(root, { item, notes, sec, backHref, nextItemHref, 
       <p class="big">Yüzde ${r.pct}</p>
       <p>${HAND[hand]}, ${esc(whole ? allLabel : item.sections.length > 1 ? `ölçü ${range[0] + 1}–${range[1]}` : item.title)}${r.bpm ? `, tempon ${r.bpm}` : ''}${parts.length ? `. ${parts.join(', ')}` : ''}.</p>
       <p class="m">${pass ? (isDone(item) ? 'Bu çalışma tamamlandı.' : 'Bu el geçti.') : `Geçmek için yüzde ${PASS} gerekir. Tempoyu düşür ya da zor ölçüyü döngüye al.`}</p>
+      ${feedbackHtml(r)}
       ${nx ? `<button class="pri" data-r="next">${esc(nx.label)}</button>` : ''}
       <button class="sec" data-r="again">Yeniden çal</button>
       ${r.weak?.length ? `<button class="sec" data-r="weak">En zor ölçüyü döngüye al (${disp(r.weak[0])})</button>` : ''}
@@ -205,6 +224,8 @@ export function mountPractice(root, { item, notes, sec, backHref, nextItemHref, 
       <label class="row">Parmak numaraları<input type="checkbox" data-s="fingers" ${S.fingers ? 'checked' : ''}></label>
       <label class="row">Metronom<input type="checkbox" data-s="metro" ${S.metro ? 'checked' : ''}></label>
       <label class="row">Klavyemden de ses çıksın<input type="checkbox" data-s="midiSound" ${S.midiSound ? 'checked' : ''}></label>
+      <label class="row">Dinamik geri bildirimi<input type="checkbox" data-s="dyn" ${S.dyn ? 'checked' : ''}></label>
+      <label class="row">Nota süresi kontrolü<input type="checkbox" data-s="dur" ${S.dur ? 'checked' : ''}></label>
       <button class="sec" data-r="manual">${db.manual[item.id] ? 'Tamamlandı işaretini kaldır' : 'Bu çalışmayı tamamlandı say'}</button>
       <button class="pri" data-r="close">Kapat</button></div>`;
     sheet.onclick = (e) => {

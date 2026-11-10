@@ -2,7 +2,8 @@
 const KEY = 'piyano-okulu-v1';
 const DEF = {
   prog: {}, manual: {}, tempo: {}, howSeen: {}, last: null,
-  settings: { zoom: 1, volume: 0.85, names: false, fingers: true, metro: true, midiSound: false, hint: 'always', piano: 'musyng' },
+  cards: { notes: {}, hist: [] },
+  settings: { zoom: 1, volume: 0.85, names: false, fingers: true, metro: true, midiSound: false, hint: 'always', piano: 'musyng', dyn: true, dur: true, cardSet: 0, cardMode: 'tus', cardHint: true },
 };
 function load() {
   try {
