@@ -27,7 +27,8 @@ const nextFa = () => [...ITEMS.values()].find(x => x.kind === 'fa' && !isDone(x)
 const firstOpenSec = (it) => { const i = it.sections.findIndex((_, k) => (db.prog[it.id]?.[k]?.[required(it)] ?? 0) < 90); return i < 0 ? 0 : i; };
 const href = (it) => `#/c/${it.id}/${firstOpenSec(it)}`;
 
-const FCLEF = (cls = '') => { const g = GLYPHS.fClef, [x0, y0, x1, y1] = g.b; return `<svg class="fc ${cls}" viewBox="${x0} ${y0} ${x1 - x0} ${y1 - y0}" aria-hidden="true"><path d="${g.d}"/></svg>`; };
+// Glif koordinatları yukarı doğru artar; ekranda çevrilerek çizilir
+const FCLEF = (cls = '') => { const g = GLYPHS.fClef, [x0, y0, x1, y1] = g.b; return `<svg class="fc ${cls}" viewBox="${x0} ${y0} ${x1 - x0} ${y1 - y0}" aria-hidden="true"><path transform="translate(0 ${y0 + y1}) scale(1 -1)" d="${g.d}"/></svg>`; };
 
 const NAV = (on) => `<header class="top">
   <a class="brand" href="#/">Piyano Okulu</a>
@@ -124,7 +125,7 @@ function miniStaff(notes) {
     return `${led}${acc ? `<text x="${x - 11}" y="${yy + 4}">${acc}</text>` : ''}<ellipse cx="${x}" cy="${yy}" rx="5.200" ry="3.800" transform="rotate(-20 ${x} ${yy})"/>`;
   }).join('');
   const [x0, y0, x1, y1] = g.b, gs = (H * 3.2) / (y1 - y0);
-  return `<svg class="mini" viewBox="0 0 ${W} 86" role="img" aria-label="Notalar: ${notes.join(', ')}">${lines}<g transform="translate(6 ${top - 1}) scale(${gs}) translate(${-x0} ${-y0})"><path d="${g.d}"/></g>${heads}</svg>`;
+  return `<svg class="mini" viewBox="0 0 ${W} 86" role="img" aria-label="Notalar: ${notes.join(', ')}">${lines}<g transform="translate(6 ${top - 1}) scale(${gs} ${-gs}) translate(${-x0} ${-y1})"><path d="${g.d}"/></g>${heads}</svg>`;
 }
 function fa() {
   const nx = nextFa();
