@@ -346,6 +346,8 @@ export class Player {
     if (i < n && this.pend[i].has(m)) { this.followHit(i, m, raw, at); return; }
     // Az önce çalınan nota hemen yeniden geldiyse (tuş sekmesi, çift sinyal) bir adım atlanmış sayılmaz
     if (i + 1 < n && this.pend[i + 1].has(m) && (at || performance.now()) - (f.hitAt.get(m) ?? -1e9) < 150) return;
+    // Bir önceki adımın notası yeniden çalındıysa bu tekrar ya da çift sinyaldir; araya giren nota atlanmış sayılmaz
+    if (i + 1 < n && this.pend[i + 1].has(m) && i > 0 && this.steps[i - 1].notes.some(o => o.midi === m)) return;
     if (i + 1 < n && this.pend[i + 1].has(m)) {
       if (f.started) this.markMissed(i); else this.pend[i].clear();
       this.followHit(i + 1, m, raw, at); return;

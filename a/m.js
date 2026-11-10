@@ -235,5 +235,5 @@ autoConnectMIDI();
 if ('serviceWorker' in navigator && isSecureContext) {
   navigator.serviceWorker.register('sw.js');
   let reloaded = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded && navigator.serviceWorker.controller) { reloaded = true; if (!document.body.classList.contains('playing')) location.reload(); } });
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded && navigator.serviceWorker.controller) { reloaded = true; if (!document.body.classList.contains('playing')) location.reload(); else addEventListener('hashchange', () => { if (!document.body.classList.contains('playing')) location.reload(); }); } });
 }
