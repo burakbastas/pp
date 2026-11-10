@@ -1,4 +1,4 @@
-// Piyano Okulu: eğitim ağacı, fa anahtarı alanı ve çalışma ekranı
+// PioMIDI: eğitim ağacı, fa anahtarı alanı ve çalışma ekranı
 import { UNITS, FA } from '../b/0.js';
 import { db, save, itemState, isDone, isStarted, required, exportData, importData, resetAll } from './d.js';
 import { mountPractice } from './e.js';
@@ -31,7 +31,7 @@ const href = (it) => `#/c/${it.id}/${firstOpenSec(it)}`;
 const FCLEF = (cls = '') => { const g = GLYPHS.fClef, [x0, y0, x1, y1] = g.b; return `<svg class="fc ${cls}" viewBox="${x0} ${y0} ${x1 - x0} ${y1 - y0}" aria-hidden="true"><path transform="translate(0 ${y0 + y1}) scale(1 -1)" d="${g.d}"/></svg>`; };
 
 const NAV = (on) => `<header class="top">
-  <a class="brand" href="#/">Piyano Okulu</a>
+  <a class="brand" href="#/">PioMIDI</a>
   <nav aria-label="Bölümler"><a href="#/" class="${on === 'tree' ? 'on' : ''}">Eğitim ağacı</a><a href="#/fa" class="${on === 'fa' ? 'on' : ''}">Fa anahtarı</a></nav>
   <a class="ic" href="#/ayar" aria-label="Ayarlar"><svg viewBox="0 0 22 22"><path d="M3 6h9m5 0h2M3 16h2m5 0h9"/><circle cx="14.500" cy="6" r="2.400"/><circle cx="7.500" cy="16" r="2.400"/></svg></a>
 </header>`;
@@ -73,7 +73,7 @@ function keyNav({ list, cur, hrefOf, doneOf, label, home, other }) {
   const whites = list.filter(x => !BLACK_AT[x.n]).map(x => `<a class="dk-w ${cls(x.n)}" href="${hrefOf(x.n)}" ${cu(x.n)} aria-label="${label} ${x.n}: ${esc(x.title)}">${x.n}</a>`).join('');
   const blacks = list.filter(x => BLACK_AT[x.n]).map(x => `<a class="dk-b ${cls(x.n)}" style="--at:${BLACK_AT[x.n]}" href="${hrefOf(x.n)}" ${cu(x.n)} aria-label="${label} ${x.n}: ${esc(x.title)}">${x.n}</a>`).join('');
   const rail = `<nav class="rail" aria-label="${label}ler">
-    <a class="rail-b" href="#/">Piyano Okulu</a>
+    <a class="rail-b" href="#/">PioMIDI</a>
     <div class="rail-keys">${list.map(x => `<a class="rk ${BLACK_AT[x.n] ? 'b' : ''} ${cls(x.n)}" href="${hrefOf(x.n)}" ${cu(x.n)}><span class="rk-k"><i>${x.n}</i></span><span class="rk-t">${esc(x.title)}</span></a>`).join('')}</div>
     <div class="rail-f"><a href="${home[0]}">${esc(home[1])}</a><a href="${other[0]}">${esc(other[1])}</a><a class="ic" href="#/ayar" aria-label="Ayarlar">${GEAR_ICON}</a></div>
   </nav>`;
@@ -192,7 +192,7 @@ function settings() {
   const pick = (id) => { S.piano = id; save(); setPiano(id); app.querySelectorAll('input[name=piano]').forEach(r => { r.checked = r.value === id; }); };
   app.querySelector('.ps').addEventListener('change', (e) => { if (e.target.name === 'piano') pick(e.target.value); });
   app.querySelector('.ps').addEventListener('click', async (e) => { const b = e.target.closest('[data-try]'); if (!b) return; pick(b.dataset.try); b.textContent = 'Yükleniyor'; await previewPiano(); b.textContent = 'Dene'; });
-  app.querySelector('#exp').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([exportData()], { type: 'application/json' })); a.download = 'piyano-okulu-yedek.json'; a.click(); };
+  app.querySelector('#exp').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([exportData()], { type: 'application/json' })); a.download = 'piomidi-yedek.json'; a.click(); };
   app.querySelector('#imp').onchange = async (e) => { try { importData(await e.target.files[0].text()); toast('Yedek yüklendi.'); } catch (x) { toast('Dosya okunamadı.'); } };
   app.querySelector('#rst').onclick = () => { const b = app.querySelector('#rst'); if (b.dataset.ok) { resetAll(); toast('İlerleme silindi.'); go('#/'); } else { b.dataset.ok = 1; b.textContent = 'Silmek için yeniden dokun'; } };
   scrollTo(0, 0);

@@ -1,7 +1,7 @@
 {
  "id": "/pp/",
- "name": "Piyano Okulu",
- "short_name": "Piyano",
+ "name": "PioMIDI: MIDI ile piyano öğrenme",
+ "short_name": "PioMIDI",
  "start_url": "./",
  "scope": "./",
  "display": "standalone",
