@@ -9,31 +9,43 @@ export const Inputs = {
   midi: { supported: !!navigator.requestMIDIAccess, ready: false, devices: [], busy: [] },
 };
 
+// Aynı klavye iki porttan görünebilir (ör. USB ve ses kartının MIDI girişi). Aynı nota
+// 35 ms içinde ikinci kez gelirse kopyadır; bırakma da yalnız basılı notaya geçer.
+const DUP_MS = 35, lastDown = new Map(), down = new Set();
+function onMessage(ev) {
+  const [st, n, v] = ev.data; const cmd = st & 0xf0;
+  const at = ev.timeStamp || performance.now();
+  if (cmd === 0x90 && v > 0) {
+    const prev = lastDown.get(n); lastDown.set(n, at);
+    if (prev != null && Math.abs(at - prev) < DUP_MS) return;
+    down.add(n); Inputs.emit('down', n, 'midi', Math.pow(v / 127, 0.8), v, at);
+  } else if (cmd === 0x80 || (cmd === 0x90 && v === 0)) {
+    if (!down.delete(n)) return;
+    Inputs.emit('up', n, 'midi', 0, 0, at);
+  } else if (cmd === 0xb0 && n === 64) Inputs.emit('pedal', v, 'midi', 0, 0, at);
+}
+// Tek MIDI erişimi: "MIDI bağla" yeniden basılsa da her nota bir kez gelir
+let accessP = null;
 export async function connectMIDI() {
   if (!navigator.requestMIDIAccess) return { ok: false, reason: 'unsupported' };
   try {
-    const access = await navigator.requestMIDIAccess();
+    if (!accessP) accessP = navigator.requestMIDIAccess();
+    const access = await accessP;
     const bind = async () => {
-      const list = [...access.inputs.values()].filter(d => !/through/i.test(d.name || ''));
+      const all = [...access.inputs.values()];
+      all.forEach(d => { d.onmidimessage = null; });
+      const list = all.filter(d => !/through/i.test(d.name || ''));
       const opened = await Promise.allSettled(list.map(d => d.open()));
       const live = list.filter((_, i) => opened[i].status === 'fulfilled');
       Inputs.midi.devices = live.map(d => d.name);
       Inputs.midi.busy = list.filter((_, i) => opened[i].status !== 'fulfilled').map(d => d.name);
-      live.forEach(input => {
-        input.onmidimessage = (ev) => {
-          const [st, n, v] = ev.data; const cmd = st & 0xf0;
-          const at = ev.timeStamp || performance.now();
-          if (cmd === 0x90 && v > 0) Inputs.emit('down', n, 'midi', Math.pow(v / 127, 0.8), v, at);
-          else if (cmd === 0x80 || (cmd === 0x90 && v === 0)) Inputs.emit('up', n, 'midi', 0, 0, at);
-          else if (cmd === 0xb0 && n === 64) Inputs.emit('pedal', v, 'midi', 0, 0, at);
-        };
-      });
+      live.forEach(input => { input.onmidimessage = onMessage; });
       window.dispatchEvent(new CustomEvent('midi-devices'));
     };
     Inputs.midi.ready = true;
     access.onstatechange = bind; await bind();
     return { ok: true, devices: Inputs.midi.devices, busy: Inputs.midi.busy };
-  } catch (e) { return { ok: false, reason: 'denied' }; }
+  } catch (e) { accessP = null; return { ok: false, reason: 'denied' }; }
 }
 // İzin daha önce verildiyse sormadan bağlanır
 export async function autoConnectMIDI() {

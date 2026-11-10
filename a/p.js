@@ -268,7 +268,7 @@ export class Player {
   resetFollow(keepMarks) {
     this.stepIdx = 0;
     this.pend = this.steps.map(s => new Set(s.notes.map(n => n.midi)));
-    this.fw = { hits: 0, missed: 0, wrong: 0, bars: new Map(), wrongBars: [], hist: [], streak: 0, started: false, log: [], bpm: null, spq: null, lastAt: null, lastWall: null, fresh: keepMarks, acc: new Set(), dyn: new Map(), holds: new Map(), durs: new Map(), wall: new Map() };
+    this.fw = { hits: 0, missed: 0, wrong: 0, bars: new Map(), wrongBars: [], hist: [], streak: 0, started: false, log: [], bpm: null, spq: null, lastAt: null, lastWall: null, fresh: keepMarks, acc: new Set(), dyn: new Map(), holds: new Map(), durs: new Map(), wall: new Map(), hitAt: new Map() };
   }
   barOf(i) { const s = this.steps[i]; return s ? s.notes[0].mi : 0; }
   addBar(i, by = 1) { const b = this.barOf(i), f = this.fw; f.bars.set(b, (f.bars.get(b) || 0) + by); }
@@ -317,6 +317,7 @@ export class Player {
     this.pend[i].delete(m); f.hits++; f.streak = 0; f.started = true;
     // dinamik ve süre için: basış hızı ve basış anı
     if (!f.wall.has(i)) f.wall.set(i, now);
+    f.hitAt.set(m, now);
     s.notes.forEach(n => { if (n.midi !== m) return; const k = n.key + ':' + m; if (raw) f.dyn.set(k, { n, v: raw }); f.holds.set(m, { n, k, t0: now, pedal: this.pedalDown, spq: f.spq }); });
     this.kb?.flash(m, 'okk');
     s.notes.filter(n => n.midi === m).forEach(n => this.eng.markResult(n.key, 'good'));
@@ -343,6 +344,8 @@ export class Player {
     f.hist.push(m); if (f.hist.length > 8) f.hist.shift();
     const i = this.stepIdx;
     if (i < n && this.pend[i].has(m)) { this.followHit(i, m, raw, at); return; }
+    // Az önce çalınan nota hemen yeniden geldiyse (tuş sekmesi, çift sinyal) bir adım atlanmış sayılmaz
+    if (i + 1 < n && this.pend[i + 1].has(m) && (at || performance.now()) - (f.hitAt.get(m) ?? -1e9) < 150) return;
     if (i + 1 < n && this.pend[i + 1].has(m)) {
       if (f.started) this.markMissed(i); else this.pend[i].clear();
       this.followHit(i + 1, m, raw, at); return;
