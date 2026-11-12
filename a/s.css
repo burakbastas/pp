@@ -25,7 +25,9 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .pri{background:var(--felt);color:var(--paper)}
 .sec{border:1.5px solid var(--ink);background:transparent}
 .top{display:flex;align-items:center;gap:0 18px;flex-wrap:wrap;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;max-width:980px;margin:0 auto}
-.brand{font:400 1.32rem/1 var(--disp);text-decoration:none}
+.brand{display:inline-flex;align-items:center;gap:9px;font:400 1.32rem/1 var(--disp);text-decoration:none}
+.logo{width:30px;height:28px;flex:none}
+body.mk{--green:#B4CAC6;--green2:#CBDBD8;--green3:#98B5B0;--pine:#23434A;--muted:#3C5A5E}
 .top .ic{margin:-8px -10px -8px auto}
 .top nav{display:flex;gap:18px;order:3;width:100%}
 .top nav a{text-decoration:none;font-weight:400;padding:10px 0;font-size:.98rem}
@@ -121,7 +123,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   .withkeys .page{flex:1;min-width:0;max-width:1180px;margin:0 auto;padding:32px 40px 48px}
   .ugrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 40px;align-items:start}
   .rail{display:flex;flex-direction:column;flex:none;width:320px;position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--green2)}
-  .rail-b{flex:none;display:flex;align-items:center;height:62px;padding:0 20px;font:400 1.5rem/1 var(--disp);text-decoration:none}
+  .rail-b{flex:none;display:flex;align-items:center;gap:10px;height:62px;padding:0 20px;font:400 1.5rem/1 var(--disp);text-decoration:none}
   /* Dikey klavye: yedi beyaz tuş satırı, siyah tuşlar iki beyazın arasına biner */
   .rail-keys{flex:1;position:relative;display:flex;flex-direction:column;min-height:364px}
   .rk{flex:1 1 0;min-height:52px;display:flex;align-items:stretch;text-decoration:none}

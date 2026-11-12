@@ -36,8 +36,9 @@ const href = (it) => `#/c/${it.id}/${firstOpenSec(it)}`;
 // Glif koordinatları yukarı doğru artar; ekranda çevrilerek çizilir
 const FCLEF = (cls = '') => { const g = GLYPHS.fClef, [x0, y0, x1, y1] = g.b; return `<svg class="fc ${cls}" viewBox="${x0} ${y0} ${x1 - x0} ${y1 - y0}" aria-hidden="true"><path transform="translate(0 ${y0 + y1}) scale(1 -1)" d="${g.d}"/></svg>`; };
 
+const LOGO = '<svg class="logo" viewBox="100 110 330 312" aria-hidden="true"><g fill="#171412"><rect x="130" y="140" width="92" height="272" rx="14"/><rect x="230" y="140" width="92" height="272" rx="14"/><rect x="330" y="140" width="92" height="272" rx="14"/></g><g stroke="#171412" stroke-width="12"><rect x="110" y="120" width="92" height="272" rx="14" fill="#FBF9F1"/><rect x="210" y="120" width="92" height="272" rx="14" fill="#A3202C"/><rect x="310" y="120" width="92" height="272" rx="14" fill="#FBF9F1"/></g><rect x="180" y="120" width="52" height="160" rx="8" fill="#171412"/><rect x="280" y="120" width="52" height="160" rx="8" fill="#171412"/></svg>';
 const NAV = (on) => `<header class="top">
-  <a class="brand" href="#/">PioMIDI</a>
+  <a class="brand" href="#/">${LOGO}PioMIDI</a>
   <nav aria-label="Bölümler"><a href="#/" class="${on === 'tree' ? 'on' : ''}">Eğitim ağacı</a><a href="#/b" class="${on === 'mk' ? 'on' : ''}">Mikrokosmos</a><a href="#/fa" class="${on === 'fa' ? 'on' : ''}">Fa anahtarı</a></nav>
   <a class="ic" href="#/ayar" aria-label="Ayarlar"><svg viewBox="0 0 22 22"><path d="M3 6h9m5 0h2M3 16h2m5 0h9"/><circle cx="14.500" cy="6" r="2.400"/><circle cx="7.500" cy="16" r="2.400"/></svg></a>
 </header>`;
@@ -117,7 +118,7 @@ function keyNav({ list, cur, hrefOf, doneOf, label, home, other }) {
   const whites = list.filter(x => !BLACK_AT[x.n]).map(x => `<a class="dk-w ${cls(x.n)}" href="${hrefOf(x.n)}" ${cu(x.n)} aria-label="${label} ${x.n}: ${esc(x.title)}">${x.n}</a>`).join('');
   const blacks = list.filter(x => BLACK_AT[x.n]).map(x => `<a class="dk-b ${cls(x.n)}" style="--at:${BLACK_AT[x.n]}" href="${hrefOf(x.n)}" ${cu(x.n)} aria-label="${label} ${x.n}: ${esc(x.title)}">${x.n}</a>`).join('');
   const rail = `<nav class="rail" aria-label="${label}ler">
-    <a class="rail-b" href="#/">PioMIDI</a>
+    <a class="rail-b" href="${home[0]}">${LOGO}PioMIDI</a>
     <div class="rail-keys">${list.map(x => `<a class="rk ${BLACK_AT[x.n] ? 'b' : ''} ${cls(x.n)}" ${BLACK_AT[x.n] ? `style="--at:${BLACK_AT[x.n]}"` : ''} href="${hrefOf(x.n)}" ${cu(x.n)}><span class="rk-k"><i>${x.n}</i></span><span class="rk-t">${esc(x.title)}</span></a>`).join('')}</div>
     <div class="rail-f"><a href="${home[0]}">${esc(home[1])}</a><a href="${other[0]}">${esc(other[1])}</a><a class="ic" href="#/ayar" aria-label="Ayarlar">${GEAR_ICON}</a></div>
   </nav>`;
@@ -264,10 +265,16 @@ function sources() {
   scrollTo(0, 0);
 }
 const go = (h) => { location.hash = h; };
+// Mikrokosmos ağacı kendi renginde: adaçayı yeşili yerine mavimsi adaçayı
+function setTheme(mk) {
+  document.body.classList.toggle('mk', mk);
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', mk ? '#B4CAC6' : '#BCD0AC');
+}
 function route() {
   stop(); practice.t++;
   const h = location.hash.replace(/^#\/?/, ''), [p, a, b] = h.split('/');
   document.body.classList.toggle('playing', p === 'c' || (p === 'fa' && a === 'kart'));
+  setTheme(p === 'b' || (p === 'c' && ITEMS.get(a)?.tree === 'mk'));
   if (p === 'u') return unit(+a);
   if (p === 'b') return a ? mkUnit(+a) : mkTree();
   if (p === 'fa' && a === 'kart') { active = mountCards(app, { stage: +b || 0 }); return; }
