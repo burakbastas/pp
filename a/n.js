@@ -106,7 +106,9 @@ export class Engraved {
     });
     const lyr = m.lyrics ? 8 : 0;
     const w = list.reduce((a, o) => a + o.w + lyr, 0) + 12 + (m.repeatStart ? 12 : 0) + (m.repeatEnd ? 12 : 0);
-    return { onsets: list, w };
+    // ölçü başında anahtar değişiyorsa küçük anahtara yer aç
+    const prev = this.score.measures[i - 1], chg = !!prev && ['rh', 'lh'].some(st => m[st] && prev[st] && prev[st].clef !== m[st].clef);
+    return { onsets: list, w: w + (chg ? 22 : 0), chg };
   }
   drawSystem(sys, si, nSys, items, yStart, avail, out, both, single) {
     const { score, opts } = this;
@@ -189,7 +191,7 @@ export class Engraved {
       const w = it.w * stretch;
       const x0 = x;
       out.push(`<rect class="loopbg" data-m="${i}" x="${r1(x0)}" y="${topY - 3}" width="${r1(w)}" height="${botY - topY + 6}"/>`);
-      let cum = (m.repeatStart ? 16 : 8);
+      let cum = (m.repeatStart ? 16 : 8) + (it.chg ? 22 : 0);
       const onsets = it.onsets.map(o => { const p = { t: o.t, x: x0 + cum * (stretch > 1 ? 1 : stretch) + 3 }; cum += o.w * stretch; return p; });
       const posRec = { i, sys: si, x0, w, onsets, top: topY, bot: botY, y: yStart, sysBottom };
       this.pos[i] = posRec;

@@ -122,19 +122,23 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   .ugrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 40px;align-items:start}
   .rail{display:flex;flex-direction:column;flex:none;width:320px;position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--green2)}
   .rail-b{flex:none;display:flex;align-items:center;height:62px;padding:0 20px;font:400 1.5rem/1 var(--disp);text-decoration:none}
-  .rail-keys{flex:1;display:flex;flex-direction:column;min-height:0}
-  .rk{flex:1 1 44px;min-height:44px;display:flex;align-items:stretch;text-decoration:none}
+  /* Dikey klavye: yedi beyaz tuş satırı, siyah tuşlar iki beyazın arasına biner */
+  .rail-keys{flex:1;position:relative;display:flex;flex-direction:column;min-height:364px}
+  .rk{flex:1 1 0;min-height:52px;display:flex;align-items:stretch;text-decoration:none}
   .rk-k{position:relative;flex:none;width:92px;background:var(--paper);border-bottom:1px solid var(--kedge)}
   .rk-k i{position:absolute;right:9px;top:50%;transform:translateY(-50%);font:400 1.14rem/1 var(--disp);font-style:normal;color:var(--ink)}
-  .rk.b .rk-k::before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:58px;background:var(--ink);border-radius:0 3px 3px 0}
   .rk-t{align-self:center;padding:0 14px;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rk.b{position:absolute;left:0;right:0;z-index:1;top:calc(100% / 7 * var(--at) - 100% / 7 * .3);height:calc(100% / 7 * .6);min-height:0}
+  .rk.b .rk-k{width:58px;background:var(--ink);border:0;border-radius:0 4px 4px 0}
+  .rk.b .rk-k i{color:var(--paper);right:10px}
+  .rk.b .rk-t{padding-left:48px}
   .rk:not(.b).d .rk-k{background:var(--pine)}
   .rk:not(.b).d .rk-k i{color:var(--paper)}
-  .rk.b.d .rk-k::before{background:var(--pine)}
+  .rk.b.d .rk-k{background:var(--pine)}
   .rk:not(.b).on .rk-k{background:var(--felt)}
   .rk:not(.b).on .rk-k i{color:var(--paper)}
-  .rk.b.on .rk-k::before{background:var(--felt)}
-  .rk.on{background:var(--green)}
+  .rk.b.on .rk-k{background:var(--felt)}
+  .rk:not(.b).on{background:var(--green)}
   .rk.on .rk-t{font-weight:600}
   .rk:hover .rk-t{text-decoration:underline;text-underline-offset:3px}
   .rail-f{flex:none;display:flex;align-items:center;gap:16px;padding:6px 8px 6px 20px}

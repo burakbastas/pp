@@ -74,7 +74,7 @@ function keyNav({ list, cur, hrefOf, doneOf, label, home, other }) {
   const blacks = list.filter(x => BLACK_AT[x.n]).map(x => `<a class="dk-b ${cls(x.n)}" style="--at:${BLACK_AT[x.n]}" href="${hrefOf(x.n)}" ${cu(x.n)} aria-label="${label} ${x.n}: ${esc(x.title)}">${x.n}</a>`).join('');
   const rail = `<nav class="rail" aria-label="${label}ler">
     <a class="rail-b" href="#/">PioMIDI</a>
-    <div class="rail-keys">${list.map(x => `<a class="rk ${BLACK_AT[x.n] ? 'b' : ''} ${cls(x.n)}" href="${hrefOf(x.n)}" ${cu(x.n)}><span class="rk-k"><i>${x.n}</i></span><span class="rk-t">${esc(x.title)}</span></a>`).join('')}</div>
+    <div class="rail-keys">${list.map(x => `<a class="rk ${BLACK_AT[x.n] ? 'b' : ''} ${cls(x.n)}" ${BLACK_AT[x.n] ? `style="--at:${BLACK_AT[x.n]}"` : ''} href="${hrefOf(x.n)}" ${cu(x.n)}><span class="rk-k"><i>${x.n}</i></span><span class="rk-t">${esc(x.title)}</span></a>`).join('')}</div>
     <div class="rail-f"><a href="${home[0]}">${esc(home[1])}</a><a href="${other[0]}">${esc(other[1])}</a><a class="ic" href="#/ayar" aria-label="Ayarlar">${GEAR_ICON}</a></div>
   </nav>`;
   const dock = `<nav class="dock" aria-label="${label}ler">
