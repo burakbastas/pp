@@ -23,7 +23,11 @@ export function sectionDef(n, [a, b], title) {
   const clefAt = (arr, start) => { let c = start; for (let i = 0; i < a; i++) { if (/%b/.test(arr[i])) c = 'bass'; if (/%t/.test(arr[i])) c = 'treble'; } return c; };
   const clean = (x) => x.replace(/\|:\s*/g, '').replace(/\s*:\|/g, '');
   const rh = (n.rh || []).slice(a, b).map(clean), lh = (n.lh || []).slice(a, b).map(clean);
-  return { title, key: n.key, time: n.time, tempo: n.tempo, rh, lh, clefR: clefAt(n.rh || [], n.clefR || 'treble'), clefL: clefAt(n.lh || [], n.clefL || 'bass'), pickup: a === 0 ? n.pickup : 0, firstBar: a };
+  // ölçü ve tonalite değişimleri: bölüm başındaki geçerli değer korunur
+  let time = n.time, times = null, keys = null;
+  if (n.times) { for (let i = 0; i <= a && i < n.times.length; i++) if (n.times[i]) time = n.times[i]; times = n.times.slice(a, b); times[0] = null; }
+  if (n.keys) keys = n.keys.slice(a, b);
+  return { title, key: keys ? keys[0] : n.key, keys, time, times, beats: n.beats || null, tempo: n.tempo, rh, lh, clefR: clefAt(n.rh || [], n.clefR || 'treble'), clefL: clefAt(n.lh || [], n.clefL || 'bass'), pickup: a === 0 ? n.pickup : 0, firstBar: a };
 }
 
 export function mountPractice(root, { item, notes, sec, backHref, nextItemHref, sub }) {

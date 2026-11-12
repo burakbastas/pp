@@ -108,12 +108,13 @@ export class Player {
     }
   }
   pumpMetro(horizon, spq) {
-    const [n, d] = this.score.time; const groups = this.score.beats;
-    const beat = groups ? null : (d === 8 && n % 3 === 0 ? 1.5 : 4 / d);
+    const groups = this.score.beats;
     while (this.nextClick < this.timeline.total) {
       const when = this.t0 + this.nextClick * spq; if (when > horizon) break;
       const m = this.timeline.pos.find(p => this.nextClick >= p.start - 1e-6 && this.nextClick < p.start + p.len - 1e-6);
       const inBar = m ? this.nextClick - m.start : 0;
+      const [n, d] = (m && this.score.measures[m.mi]?.time) || this.score.time;
+      const beat = d === 8 && n % 3 === 0 ? 1.5 : 4 / d;
       click(when, Math.abs(inBar) < 1e-6);
       if (groups) {
         let acc = 0, step = groups[0]; for (const g of groups) { if (inBar >= acc - 1e-6) step = g; acc += g; }

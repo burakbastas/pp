@@ -108,7 +108,8 @@ export class Engraved {
     const w = list.reduce((a, o) => a + o.w + lyr, 0) + 12 + (m.repeatStart ? 12 : 0) + (m.repeatEnd ? 12 : 0);
     // ölçü başında anahtar değişiyorsa küçük anahtara yer aç
     const prev = this.score.measures[i - 1], chg = !!prev && ['rh', 'lh'].some(st => m[st] && prev[st] && prev[st].clef !== m[st].clef);
-    return { onsets: list, w: w + (chg ? 22 : 0), chg };
+    const tchg = m.timeChange ? 26 : 0;
+    return { onsets: list, w: w + (chg ? 22 : 0) + tchg, chg, tchg };
   }
   drawSystem(sys, si, nSys, items, yStart, avail, out, both, single) {
     const { score, opts } = this;
@@ -178,7 +179,7 @@ export class Engraved {
       out.push(drawClef(clef, x, y0));
       x += 30;
       x = drawKey(key, clef, x, y0, out);
-      if (firstI === 0) drawTime(score.time, x + 2, y0, out);
+      if (firstI === 0) drawTime(firstM.time || score.time, x + 2, y0, out);
     }
     if (si > 0 || firstI > 0 || score.barOffset) out.push(`<text class="mnum" x="${left + 2}" y="${topY - 8}">${firstI + 1 + score.barOffset}</text>`);
     let x = left + sys.header;
@@ -191,7 +192,7 @@ export class Engraved {
       const w = it.w * stretch;
       const x0 = x;
       out.push(`<rect class="loopbg" data-m="${i}" x="${r1(x0)}" y="${topY - 3}" width="${r1(w)}" height="${botY - topY + 6}"/>`);
-      let cum = (m.repeatStart ? 16 : 8) + (it.chg ? 22 : 0);
+      let cum = (m.repeatStart ? 16 : 8) + (it.chg ? 22 : 0) + (it.tchg || 0);
       const onsets = it.onsets.map(o => { const p = { t: o.t, x: x0 + cum * (stretch > 1 ? 1 : stretch) + 3 }; cum += o.w * stretch; return p; });
       const posRec = { i, sys: si, x0, w, onsets, top: topY, bot: botY, y: yStart, sysBottom };
       this.pos[i] = posRec;
@@ -200,6 +201,7 @@ export class Engraved {
         const y0 = stavesY[staff]; if (y0 == null || !m[staff]) continue;
         const prev = score.measures[i - 1]?.[staff]?.clef;
         if (idx > 0 && prev && prev !== m[staff].clef) { out.push(drawClef(m[staff].clef, x0 + 1, y0, 0.72)); clefChange[staff] = 1; }
+        if (it.tchg) drawTime(m.time, x0 + (it.chg ? 22 : 0) + (m.repeatStart ? 10 : 2), y0, out);
         this.drawStaffMeasure(m, staff, y0, onsets, out, posRec, stavesY);
       }
       if (m.label) out.push(`<text class="barlabel" x="${r1(x0 + 8)}" y="${topY - 12}">${esc(m.label)}</text>`);
@@ -288,7 +290,7 @@ export class Engraved {
         }
         if (g.every(i => v[i].triplet)) {
           const mx = (f.x + l.x) / 2, yy = lineY(mx) + (up ? -6 : 13);
-          out.push(`<text class="tup" x="${r1(mx)}" y="${r1(yy)}">3</text>`);
+          out.push(`<text class="tup" x="${r1(mx)}" y="${r1(yy)}">${v[g[0]].tup || 3}</text>`);
         }
       });
       v.forEach((ev, ei) => {

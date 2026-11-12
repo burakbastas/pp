@@ -1,5 +1,6 @@
 // PioMIDI: eğitim ağacı, fa anahtarı alanı ve çalışma ekranı
 import { UNITS, FA } from '../b/0.js';
+import { MK } from '../b/k0.js';
 import { db, save, itemState, isDone, isStarted, required, exportData, importData, resetAll } from './d.js';
 import { mountPractice } from './e.js';
 import { mountCards, lastRound } from './c.js';
@@ -18,11 +19,16 @@ const ORDER = ['parmak', 'alistirma', 'etut', 'eser'];
 const ITEMS = new Map();
 UNITS.forEach(u => ORDER.forEach(g => u.groups[g].forEach((it, i) => ITEMS.set(it.id, { ...it, unit: u.n, group: g, idx: i }))));
 FA.forEach(s => s.etudes.forEach((it, i) => ITEMS.set(it.id, { ...it, stage: s.n, idx: i })));
+MK.forEach(u => u.groups.eser.forEach((it, i) => ITEMS.set(it.id, { ...it, unit: u.n, tree: 'mk', group: 'eser', idx: i })));
 
 const unitItems = (u) => ORDER.flatMap(g => u.groups[g].map(x => ITEMS.get(x.id)));
 const unitDone = (u) => unitItems(u).filter(isDone).length;
 const currentUnit = () => UNITS.find(u => unitDone(u) < unitItems(u).length) || UNITS[UNITS.length - 1];
 const nextItem = () => { const u = currentUnit(); return unitItems(u).find(x => !isDone(x)) || unitItems(u)[0]; };
+const mkItems = (u) => u.groups.eser.map(x => ITEMS.get(x.id));
+const mkDone = (u) => mkItems(u).filter(isDone).length;
+const mkCurrent = () => MK.find(u => mkDone(u) < mkItems(u).length) || MK[MK.length - 1];
+const mkNext = () => { const u = mkCurrent(); return mkItems(u).find(x => !isDone(x)) || mkItems(u)[0]; };
 const nextFa = () => [...ITEMS.values()].find(x => x.kind === 'fa' && !isDone(x));
 const firstOpenSec = (it) => { const i = it.sections.findIndex((_, k) => (db.prog[it.id]?.[k]?.[required(it)] ?? 0) < 90); return i < 0 ? 0 : i; };
 const href = (it) => `#/c/${it.id}/${firstOpenSec(it)}`;
@@ -32,7 +38,7 @@ const FCLEF = (cls = '') => { const g = GLYPHS.fClef, [x0, y0, x1, y1] = g.b; re
 
 const NAV = (on) => `<header class="top">
   <a class="brand" href="#/">PioMIDI</a>
-  <nav aria-label="Bölümler"><a href="#/" class="${on === 'tree' ? 'on' : ''}">Eğitim ağacı</a><a href="#/fa" class="${on === 'fa' ? 'on' : ''}">Fa anahtarı</a></nav>
+  <nav aria-label="Bölümler"><a href="#/" class="${on === 'tree' ? 'on' : ''}">Eğitim ağacı</a><a href="#/b" class="${on === 'mk' ? 'on' : ''}">Mikrokosmos</a><a href="#/fa" class="${on === 'fa' ? 'on' : ''}">Fa anahtarı</a></nav>
   <a class="ic" href="#/ayar" aria-label="Ayarlar"><svg viewBox="0 0 22 22"><path d="M3 6h9m5 0h2M3 16h2m5 0h9"/><circle cx="14.500" cy="6" r="2.400"/><circle cx="7.500" cy="16" r="2.400"/></svg></a>
 </header>`;
 
@@ -58,6 +64,44 @@ function tree() {
   </main>`;
   const here = app.querySelector('.vk .here');
   if (here && cur.n > 3) requestAnimationFrame(() => here.scrollIntoView({ block: 'center' }));
+}
+
+// İkinci ağaç: Bartók, Mikrokosmos. Ayrı ilerleme, aynı klavye görünümü
+function mkTree() {
+  const cur = mkCurrent(), nx = mkNext();
+  const total = MK.reduce((a, u) => a + u.groups.eser.length, 0), done = MK.reduce((a, u) => a + mkDone(u), 0);
+  app.innerHTML = `${NAV('mk')}<main class="page">
+    <section class="intro">
+      <h1>Bartók, Mikrokosmos</h1>
+      <p>Altı ciltte ${total} parça, en kolaydan konser düzeyine. Her parça tek bir beceri öğretir: birlikte ezgi, ayna hareketi, kanon, modlar, aksak ölçüler. ${done ? `${done} / ${total} tamamlandı.` : ''}</p>
+      <a class="pri" href="${href(nx)}">${done ? 'Devam et' : 'Başla'}: ${esc(nx.title)}</a>
+    </section>
+    <ol class="vk">${MK.map((u, i) => {
+    const d = mkDone(u), t = mkItems(u).length, here = u === cur;
+    return `<li class="${CHROMA[i]} ${here ? 'here' : ''} ${d === t ? 'done' : ''}"><a href="#/b/${u.n}">
+      <span class="vkey"><i>${u.n}</i></span>
+      <span class="ut"><small>${esc(u.code)}, no. ${u.range[0]}–${u.range[1]}</small><b>${esc(u.title)}</b></span>
+      <span class="up">${here ? 'Buradasın' : d ? `${d} / ${t}` : ''}</span>
+    </a></li>`;
+  }).join('')}</ol>
+    <p class="foot"><a href="#/kaynak">Bu müfredat nereden geliyor?</a></p>
+  </main>`;
+  const here = app.querySelector('.vk .here');
+  if (here && cur.n > 3) requestAnimationFrame(() => here.scrollIntoView({ block: 'center' }));
+}
+function mkUnit(n) {
+  const u = MK[n - 1]; if (!u) return go('#/b');
+  const items = mkItems(u);
+  const nav = keyNav({ list: MK.map(x => ({ n: x.n, title: x.title })), cur: n, hrefOf: (k) => `#/b/${k}`, doneOf: (k) => mkDone(MK[k - 1]) === mkItems(MK[k - 1]).length, label: 'Ünite', home: ['#/b', 'Mikrokosmos'], other: ['#/', 'Eğitim ağacı'] });
+  app.innerHTML = `<div class="withkeys">${nav.rail}<main class="page unit">
+    <h1><span>${n}</span>${esc(u.title)}</h1>
+    <p class="meta">${esc(u.code)}, ${esc(u.stage.toLocaleLowerCase('tr'))}. ${mkDone(u)} / ${items.length} tamamlandı.</p>
+    <p class="aim">${esc(u.aim)}</p>
+    <section><h2>Parçalar</h2><ul class="ls">${items.map(it => `<li><a href="${href(it)}">${ST_MARK(itemState(it))}
+      <span class="lt"><b>${it.num}. ${esc(it.title)}</b><small>Cilt ${it.vol}, ${it.bars} ölçü</small><em>${esc(it.why)}</em></span>
+      ${it.sections.length > 1 ? `<span class="n">${it.sections.length} bölüm</span>` : ''}</a></li>`).join('')}</ul></section>
+  </main></div>${nav.dock}`;
+  scrollTo(0, 0);
 }
 
 const ST_MARK = (s) => `<span class="st ${s}" aria-label="${s === 'done' ? 'Tamamlandı' : s === 'some' ? 'Başlandı' : 'Başlanmadı'}"></span>`;
@@ -159,7 +203,7 @@ async function loadNotes(key) { if (!noteCache.has(key)) noteCache.set(key, (awa
 async function practice(id, sec) {
   const it = ITEMS.get(id); if (!it) return go('#/');
   const token = ++practice.t;
-  const all = await loadNotes(it.kind === 'fa' ? 'f' : String(it.unit));
+  const all = await loadNotes(it.kind === 'fa' ? 'f' : it.tree === 'mk' ? 'k' + it.unit : String(it.unit));
   if (token !== practice.t) return;
   const secI = sec === 'tum' && it.sections.length > 1 ? 'all' : Math.min(+sec || 0, it.sections.length - 1);
   let backHref, nextItemHref, sub;
@@ -167,6 +211,10 @@ async function practice(id, sec) {
     backHref = `#/fa/${it.stage}`; sub = `${FA[it.stage - 1].title}, sol el`;
     const nx = FA[it.stage - 1].etudes[it.idx + 1] || FA[it.stage]?.etudes[0];
     nextItemHref = nx ? `#/c/${nx.id}/0` : null;
+  } else if (it.tree === 'mk') {
+    const list = mkItems(MK[it.unit - 1]), k = list.findIndex(x => x.id === id);
+    backHref = `#/b/${it.unit}`; const nx = list[k + 1] || MK[it.unit]?.groups.eser[0]; nextItemHref = nx ? `#/c/${nx.id}/0` : null;
+    sub = `Bartók, Mikrokosmos, no. ${it.num}`;
   } else {
     const u = UNITS[it.unit - 1], list = unitItems(u), k = list.findIndex(x => x.id === id);
     backHref = `#/u/${it.unit}`; const nx = list[k + 1]; nextItemHref = nx ? `#/c/${nx.id}/0` : null;
@@ -206,6 +254,7 @@ function sources() {
     <section><h2>Parmak geçişi ve atlama</h2><p>Bu alıştırmalar bu uygulama için yazıldı. Geçiş ve atlama tarifi ${L('Chuan C. Chang, Fundamentals of Piano Practice', 'https://fundamentals-of-piano-practice.readthedocs.io/chapter1/ch1_topics/III.5.html')} kitabının ${L('atlama bölümüyle', 'https://fundamentals-of-piano-practice.readthedocs.io/chapter1/ch1_topics/III.7.html')} birlikte izlenerek yazıldı. Dizi parmaklamaları standart tablolardandır.</p></section>
     <section><h2>Fa anahtarı</h2><p>Etütler bu uygulama için yazıldı. Sıralama durak nota yöntemini izler: önce Fa çizgisi ve orta Do, sonra komşular.</p></section>
     <section><h2>Notalar</h2><p>Eser ve etütlerin hepsi kamu malıdır. Nota kaynakları: ${L('Mutopia Project', 'https://www.mutopiaproject.org')}, Nathanael Meister’in ${L('LilyPond piyano okulu', 'https://github.com/nathanaelmeister/Piano_-_First_two_hand_exercises')} (Beyer, Czerny, Köhler, Berens, Gurlitt) ve ${L('da-x/czerny', 'https://github.com/da-x/czerny')}. </p></section>
+    <section><h2>Mikrokosmos</h2><p>İkinci ağaç Béla Bartók’un ${L('Mikrokosmos, Sz. 107', 'https://imslp.org/wiki/Mikrokosmos%2C_Sz.107_%28Bart%C3%B3k%2C_B%C3%A9la%29')} dizisidir: altı cilt, zorluğa göre sıralı 153 parça. Dört elle çalınan altı parça (43, 44, 55, 65, 68, 127) yoktur. Bartók 1945’te öldü; eser Türkiye’de ve AB’de kamu malıdır. Notalar ${L('Mikrokosmos-difficulty', 'https://github.com/PRamoneda/mikrokosmos-difficulty')} veri setindeki MusicXML dosyalarından çevrildi; bu dosyalar IMSLP taramalarından nota tanıma ve elle düzeltmeyle üretilmiştir, yer yer hata olabilir. Tekrarlı bitişler açılarak yazıldı.</p></section>
     <section><h2>Piyano sesleri</h2><p>Hepsi ücretsiz ve serbest lisanslıdır. Örnekler MP3’e çevrildi, tek dinamik katman seçildi ve kısaltıldı.</p>
       <p>Musyng Kite: Sarcyan, ${L('midi-js-soundfonts', 'https://github.com/gleitz/midi-js-soundfonts')} üzerinden, ${L('CC BY-SA 3.0', 'https://creativecommons.org/licenses/by-sa/3.0/')}.</p>
       <p>Salamander Grand Piano: Alexander Holm, Yamaha C5, ${L('kaynak', 'https://github.com/sfzinstruments/SalamanderGrandPiano')}, ${L('CC BY 3.0', 'https://creativecommons.org/licenses/by/3.0/')}.</p>
@@ -220,6 +269,7 @@ function route() {
   const h = location.hash.replace(/^#\/?/, ''), [p, a, b] = h.split('/');
   document.body.classList.toggle('playing', p === 'c' || (p === 'fa' && a === 'kart'));
   if (p === 'u') return unit(+a);
+  if (p === 'b') return a ? mkUnit(+a) : mkTree();
   if (p === 'fa' && a === 'kart') { active = mountCards(app, { stage: +b || 0 }); return; }
   if (p === 'fa') return a ? faStage(+a) : fa();
   if (p === 'c') return practice(a, b);

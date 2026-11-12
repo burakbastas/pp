@@ -4,10 +4,12 @@
 import { parsePitch } from './t.js';
 
 export function durQuarters(tok) {
-  const m = /^(\d+)(\.*)$/.exec(tok);
+  const m = /^(\d+)(\.*)(?:t(\d+))?$/.exec(tok);
   const n = +m[1];
   let q = n === 12 ? 1 / 3 : 4 / n, add = q;
   for (let i = 0; i < m[2].length; i++) { add /= 2; q += add; }
+  // "16t5": beşleme; n nota, kendinden küçük en büyük ikinin kuvveti kadar yer kaplar
+  if (m[3]) { const a = +m[3]; q *= (1 << (Math.floor(Math.log2(a)))) / a; }
   return q;
 }
 
@@ -30,7 +32,7 @@ function parseVoice(text, ctx) {
       .replace(/\)/g, () => { mods.slurEnd = true; return ''; })
       .replace(/~/g, () => { mods.tie = true; return ''; })
       .replace(/\^([tmp])/g, (_, o) => { mods.orn = o; return ''; })
-      .replace(/:(\d+\.*)/, (_, d) => { ctx.dur = d; return ''; });
+      .replace(/:(\d+\.*(?:t\d+)?)/, (_, d) => { ctx.dur = d; return ''; });
     let finger = null;
     rest = rest.replace(/_(\d)/, (_, f) => { finger = f; return ''; });
     if (inner !== null) {
@@ -41,7 +43,8 @@ function parseVoice(text, ctx) {
     else push([noteOf(rest + (finger ? '_' + finger : ''), mods.tie)]);
     function push(notes) {
       const d = durQuarters(ctx.dur);
-      events.push({ t, d, notes, rest: notes.length === 0, base: ctx.dur, triplet: ctx.dur.startsWith('12'), ...mods });
+      const tu = /t(\d+)$/.exec(ctx.dur), tri = ['12', '6', '24', '3'].includes(ctx.dur);
+      events.push({ t, d, notes, rest: notes.length === 0, base: ctx.dur.replace(/t\d+$/, '').replace(/^6$/, '4').replace(/^24$/, '16').replace(/^3$/, '2'), triplet: tri || !!tu, tup: tu ? +tu[1] : tri ? 3 : 0, ...mods });
       t += d;
     }
   }
@@ -82,7 +85,7 @@ export function parseScore(def) {
   const rh = splitText(def.rh), lh = splitText(def.lh);
   const n = Math.max(rh.length, lh.length);
   const time = def.time || [4, 4];
-  const barLen = time[0] * 4 / time[1];
+  let curTime = time;
   const sR = { clef: def.clefR || 'treble' }, sL = { clef: def.clefL || 'bass' };
   const measures = [];
   for (let i = 0; i < n; i++) {
@@ -96,7 +99,8 @@ export function parseScore(def) {
       repeatStart: R?.repeatStart || L?.repeatStart || false,
       repeatEnd: R?.repeatEnd || L?.repeatEnd || false,
       key: def.keys ? def.keys[i] : (def.key || 0),
-      time, len: (def.pickup && i === 0) ? def.pickup : barLen,
+      time: (curTime = (def.times && def.times[i]) || curTime), timeChange: !!(def.times && def.times[i] && i > 0),
+      len: (def.pickup && i === 0) ? def.pickup : curTime[0] * 4 / curTime[1],
       label: def.barLabels ? def.barLabels[i] : null,
     });
   }
