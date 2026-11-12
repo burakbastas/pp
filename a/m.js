@@ -11,6 +11,8 @@ import { PIANOS } from './q.js';
 import { esc, toast } from './u.js';
 
 const app = document.getElementById('app');
+// iPadOS/iOS 26 ana ekran uygulamasında sistem üst kenara bulanıklık bandı koyar; içerik bandın altına iner
+if (navigator.standalone && +(/Version\/(\d+)/.exec(navigator.userAgent)?.[1] || 26) >= 26) document.documentElement.classList.add('ios-sa');
 let active = null;
 const stop = () => { active?.cleanup?.(); active = null; };
 

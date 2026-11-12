@@ -4,12 +4,14 @@
   --rh:#1F5A96;--lh:#A3202C;--good:#27764B;--bad:#C96A12;--fin:#1F5A96;
   --staff:#3b3a36;--ktop:#FBF9F1;--kblack:#171412;--kedge:#B8B5A4;
   --disp:"Old Standard",Georgia,"Times New Roman",serif;--ui:"Libre Franklin","Segoe UI",system-ui,sans-serif;
+  --st:env(safe-area-inset-top);
   color-scheme:light}
 @font-face{font-family:"Old Standard";src:url(../f/3.woff) format("woff");font-weight:400;font-display:swap}
 @font-face{font-family:"Old Standard";src:url(../f/5.woff) format("woff");font-weight:700;font-display:swap}
 @font-face{font-family:"Old Standard";src:url(../f/4.woff) format("woff");font-weight:400;font-style:italic;font-display:swap}
 @font-face{font-family:"Libre Franklin";src:url(../f/1.woff) format("woff");font-weight:400;font-display:swap}
 @font-face{font-family:"Libre Franklin";src:url(../f/2.woff) format("woff");font-weight:600;font-display:swap}
+html.ios-sa{--st:calc(env(safe-area-inset-top) + 30px)}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--green);color:var(--ink);font:400 16px/1.5 var(--ui)}
@@ -24,7 +26,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .pri,.sec{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:0 20px;font-weight:600;text-decoration:none;border-radius:3px;cursor:pointer}
 .pri{background:var(--felt);color:var(--paper)}
 .sec{border:1.5px solid var(--ink);background:transparent}
-.top{display:flex;align-items:center;gap:0 18px;flex-wrap:wrap;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;max-width:980px;margin:0 auto}
+.top{display:flex;align-items:center;gap:0 18px;flex-wrap:wrap;padding:calc(10px + var(--st)) 16px 10px;max-width:980px;margin:0 auto}
 .brand{display:inline-flex;align-items:center;gap:9px;font:400 1.32rem/1 var(--disp);text-decoration:none}
 .logo{width:30px;height:28px;flex:none}
 body.mk{--green:#B4CAC6;--green2:#CBDBD8;--green3:#98B5B0;--pine:#23434A;--muted:#3C5A5E}
@@ -89,7 +91,7 @@ body.mk{--green:#B4CAC6;--green2:#CBDBD8;--green3:#98B5B0;--pine:#23434A;--muted
 .n{flex:none;font-size:.82rem;color:var(--muted);padding-top:7px}
 /* Klavye gezinmesi */
 .withkeys{min-height:100vh}
-.withkeys .page{padding-top:calc(24px + env(safe-area-inset-top));padding-bottom:calc(150px + env(safe-area-inset-bottom))}
+.withkeys .page{padding-top:calc(24px + var(--st));padding-bottom:calc(150px + env(safe-area-inset-bottom))}
 .rail{display:none}
 .dock{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--ink);color:var(--paper);padding-bottom:env(safe-area-inset-bottom)}
 .dock :focus-visible{outline-color:var(--paper)}
@@ -122,7 +124,7 @@ body.mk{--green:#B4CAC6;--green2:#CBDBD8;--green3:#98B5B0;--pine:#23434A;--muted
   .withkeys{display:flex;align-items:flex-start}
   .withkeys .page{flex:1;min-width:0;max-width:1180px;margin:0 auto;padding:32px 40px 48px}
   .ugrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 40px;align-items:start}
-  .rail{display:flex;flex-direction:column;flex:none;width:320px;position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--green2)}
+  .rail{display:flex;flex-direction:column;flex:none;width:320px;position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--green2);padding-top:var(--st)}
   .rail-b{flex:none;display:flex;align-items:center;gap:10px;height:62px;padding:0 20px;font:400 1.5rem/1 var(--disp);text-decoration:none}
   /* Dikey klavye: yedi beyaz tuş satırı, siyah tuşlar iki beyazın arasına biner */
   .rail-keys{flex:1;position:relative;display:flex;flex-direction:column;min-height:364px}
@@ -182,7 +184,7 @@ body.mk{--green:#B4CAC6;--green2:#CBDBD8;--green3:#98B5B0;--pine:#23434A;--muted
 @media (min-width:1100px){.vk{margin:0}}
 /* Çalışma ekranı */
 body.playing{background:var(--paper);overflow:hidden}
-.pr{height:100vh;height:100dvh;display:flex;flex-direction:column;background:var(--green);padding-top:env(safe-area-inset-top)}
+.pr{height:100vh;height:100dvh;display:flex;flex-direction:column;background:var(--green);padding-top:var(--st)}
 .pr-h{display:flex;align-items:center;gap:2px;padding:2px 6px;flex:none}
 .pr-t{flex:1;min-width:0;line-height:1.15}
 .pr-t h1{font-size:1.34rem;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
